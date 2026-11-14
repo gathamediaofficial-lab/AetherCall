@@ -1,4 +1,4 @@
-package com.gathamedia.aethercall
+package com.aether.call
 
 import org.junit.Test
 
