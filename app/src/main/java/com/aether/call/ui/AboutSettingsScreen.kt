@@ -337,9 +337,9 @@ fun AboutSettingsScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    GitHubUpdateChecker.openReleasePage(
+                                    GitHubUpdateChecker.openWebPage(
                                         context,
-                                        "https://github.com/NareshKumarMeena/Aether-Call",
+                                        "https://github.com/gathamediaofficial-lab/AetherCall",
                                     )
                                 }
                                 .padding(horizontal = 20.dp, vertical = 16.dp),
@@ -371,7 +371,7 @@ fun AboutSettingsScreen(
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = "github.com/NareshKumarMeena/Aether-Call",
+                                    text = "github.com/gathamediaofficial-lab/AetherCall",
                                     fontSize = 13.sp,
                                     color = Color(0xFF9E9E9E),
                                 )

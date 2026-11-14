@@ -11,9 +11,9 @@ import java.net.URL
 
 object GitHubUpdateChecker {
 
-    // Replace with your actual GitHub username and repository name
-    private const val GITHUB_REPO_OWNER = "NareshKumarMeena"
-    private const val GITHUB_REPO_NAME = "Aether-Call"
+    // Your exact GitHub username/organization and repository name
+    private const val GITHUB_REPO_OWNER = "gathamediaofficial-lab"
+    private const val GITHUB_REPO_NAME = "AetherCall"
 
     data class UpdateInfo(
         val hasUpdate: Boolean,
@@ -70,7 +70,9 @@ object GitHubUpdateChecker {
         return 0
     }
 
-    fun openReleasePage(context: Context, urlString: String) {
+    fun openReleasePage(context: Context, urlString: String) = openWebPage(context, urlString)
+
+    fun openWebPage(context: Context, urlString: String) {
         try {
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(urlString)).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
