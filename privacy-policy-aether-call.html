@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - Aether Call</title>
+    <style>
+        :root {
+            --bg-primary: #0a0b0e;
+            --bg-card: #16181d;
+            --bg-accent: #1e2128;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-green: #10b981;
+            --accent-blue: #38bdf8;
+            --border-color: #262932;
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.7;
+            padding: 2rem 1rem;
+        }
+        .container {
+            max-width: 860px;
+            margin: 0 auto;
+        }
+        header {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 2.5rem 2rem;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .badge {
+            display: inline-block;
+            background-color: rgba(16, 185, 129, 0.15);
+            color: var(--accent-green);
+            font-size: 0.82rem;
+            font-weight: 600;
+            padding: 0.35rem 0.9rem;
+            border-radius: 999px;
+            margin-bottom: 1rem;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+        }
+        h1 {
+            font-size: 2.2rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            color: #ffffff;
+        }
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 0.98rem;
+        }
+        section {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+        }
+        h2 {
+            font-size: 1.35rem;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+        h2::before {
+            content: "";
+            display: inline-block;
+            width: 6px;
+            height: 22px;
+            background-color: var(--accent-green);
+            border-radius: 4px;
+        }
+        p {
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+            font-size: 0.98rem;
+        }
+        p:last-child {
+            margin-bottom: 0;
+        }
+        ul {
+            list-style: none;
+            margin: 1rem 0;
+        }
+        ul li {
+            position: relative;
+            padding-left: 1.5rem;
+            margin-bottom: 0.85rem;
+            color: var(--text-secondary);
+            font-size: 0.96rem;
+        }
+        ul li::before {
+            content: "•";
+            position: absolute;
+            left: 0.2rem;
+            color: var(--accent-green);
+            font-weight: bold;
+            font-size: 1.2rem;
+            line-height: 1.3;
+        }
+        strong {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+        .permission-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            font-size: 0.92rem;
+        }
+        .permission-table th,
+        .permission-table td {
+            text-align: left;
+            padding: 0.9rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .permission-table th {
+            color: var(--text-primary);
+            background-color: var(--bg-accent);
+            font-weight: 600;
+        }
+        .permission-table td {
+            color: var(--text-secondary);
+        }
+        .permission-table code {
+            color: var(--accent-blue);
+            background-color: rgba(56, 189, 248, 0.1);
+            padding: 0.15rem 0.4rem;
+            border-radius: 6px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.84rem;
+        }
+        a {
+            color: var(--accent-blue);
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        footer {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.88rem;
+            padding: 1.5rem 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <span class="badge">Zero Data Collection • 100% Local-First</span>
+            <h1>Aether Call — Privacy Policy</h1>
+            <p class="subtitle">Effective Date: November 14, 2026 &nbsp;|&nbsp; Developer: Gatha Media</p>
+        </header>
+
+        <section>
+            <h2>1. Core Privacy Commitment</h2>
+            <p>
+                <strong>Aether Call</strong> (package name: <code>com.aether.call</code>) is a native Android dialer application developed by <strong>Gatha Media</strong>. Aether Call is built on a strict <strong>Zero Data Collection</strong> and <strong>Local-First Architecture</strong>.
+            </p>
+            <p>
+                We do <strong>not</strong> operate any backend analytics servers, cloud databases, advertising SDKs, or telemetry trackers. We do not collect, store, transmit, rent, or sell your personal information, call logs, contacts, audio recordings, or device identifiers under any circumstances.
+            </p>
+        </section>
+
+        <section>
+            <h2>2. How Your Data is Stored and Processed Locally</h2>
+            <p>All data generated or accessed by Aether Call remains exclusively on your physical Android device within the Android OS security sandbox:</p>
+            <ul>
+                <li><strong>Contacts &amp; Caller ID:</strong> Contact lookups, T9 smart search, and contact modifications interact directly with Android's native <code>ContactsContract</code> provider on your device. Custom contact posters and avatars are stored inside your device's local Room database and private application directory.</li>
+                <li><strong>Call Logs &amp; History:</strong> Call history is read from and written solely to your device's system <code>CallLog.Calls</code> provider so you can view and manage recent calls.</li>
+                <li><strong>Call Recordings:</strong> When you manually initiate or enable local call recording, audio streams are encoded into <code>.m4a</code> files and written directly to your device's local public storage via Android <code>MediaStore</code> (<code>Music/Aether Call Recordings</code>). Recordings are never uploaded anywhere; sharing a recording only occurs if you explicitly trigger the system share sheet.</li>
+                <li><strong>App Preferences &amp; Quick Replies:</strong> User preferences (such as iOS vs. One UI incoming call layout style, call background themes, flip-to-silence, and quick-reply SMS templates) are stored locally using Android Jetpack DataStore and Room SQLite database.</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>3. System Roles &amp; Permissions Breakdown</h2>
+            <p>To function as your default system Phone and Call Screening application (<code>RoleManager.ROLE_DIALER</code> and <code>ROLE_CALL_SCREENING</code>), Aether Call requests the following Android permissions strictly for local telephony execution:</p>
+            <table class="permission-table">
+                <thead>
+                    <tr>
+                        <th>Permission / Role</th>
+                        <th>Local Purpose</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>BIND_INCALL_SERVICE</code> &amp; <code>MANAGE_OWN_CALLS</code></td>
+                        <td>Required by Android Telecom to display the incoming/ongoing call screen, handle VoLTE/ViLTE carrier video calls, and manage call audio routing.</td>
+                    </tr>
+                    <tr>
+                        <td><code>CALL_PHONE</code> &amp; <code>ANSWER_PHONE_CALLS</code></td>
+                        <td>Allows placing outgoing carrier calls and answering incoming calls directly from the dialer and lock screen.</td>
+                    </tr>
+                    <tr>
+                        <td><code>READ_CONTACTS</code> &amp; <code>WRITE_CONTACTS</code></td>
+                        <td>Resolves caller names/photos during calls, powers the local T9 keypad search, and lets you create or edit contacts locally.</td>
+                    </tr>
+                    <tr>
+                        <td><code>READ_CALL_LOG</code> &amp; <code>WRITE_CALL_LOG</code></td>
+                        <td>Displays your recent call history and updates missed/answered call entries on the device.</td>
+                    </tr>
+                    <tr>
+                        <td><code>RECORD_AUDIO</code></td>
+                        <td>Used exclusively for local call recording into <code>MediaStore</code> and rendering real-time on-device audio visualizer bars during calls.</td>
+                    </tr>
+                    <tr>
+                        <td><code>CAMERA</code></td>
+                        <td>Used solely by Android's Telecom <code>VideoCall</code> provider when you engage in a two-way Carrier HD Video Call (ViLTE/IMS).</td>
+                    </tr>
+                    <tr>
+                        <td><code>SEND_SMS</code></td>
+                        <td>Triggered only when you explicitly select a "Quick Reply" message to decline an incoming call via SMS.</td>
+                    </tr>
+                    <tr>
+                        <td><code>FOREGROUND_SERVICE_PHONE_CALL</code> &amp; <code>USE_FULL_SCREEN_INTENT</code></td>
+                        <td>Ensures active calls remain uninterrupted in the foreground and wakes the lock screen when a phone call arrives.</td>
+                    </tr>
+                    <tr>
+                        <td><code>INTERNET</code> (Optional Update Check)</td>
+                        <td>Used solely when you manually tap <strong>"Check for updates"</strong> in Settings to query the public GitHub Releases API (<code>api.github.com/repos/gathamediaofficial-lab/AetherCall/releases/latest</code>).</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section>
+            <h2>4. Network Access &amp; Third-Party Services</h2>
+            <p>
+                Aether Call does not make background network requests to any proprietary servers. The only external network request occurs when you explicitly press <strong>"Check for updates"</strong> in the <em>About Aether Call</em> screen, which sends a standard HTTPS <code>GET</code> request to GitHub's official REST API to compare version tags. That request is governed by <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" target="_blank" rel="noopener noreferrer">GitHub's Privacy Statement</a>.
+            </p>
+            <p>
+                Voice and video calls placed through Aether Call are routed directly through your mobile carrier's cellular/IMS network (VoLTE/ViLTE/VoWiFi) using standard SIM authentication.
+            </p>
+        </section>
+
+        <section>
+            <h2>5. Data Retention &amp; User Control</h2>
+            <p>
+                Because all data resides locally on your device, you retain 100% control over its lifecycle:
+            </p>
+            <ul>
+                <li>You can delete individual call logs, custom contact posters, or quick-reply templates directly inside the app at any time.</li>
+                <li>You can delete recorded call audio files directly from your device's File Manager under <code>Music/Aether Call Recordings</code>.</li>
+                <li>Uninstalling Aether Call or clearing its application storage in Android Settings permanently erases all local databases and app preferences.</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>6. Open Source Transparency &amp; Contact</h2>
+            <p>
+                Aether Call is open-source software. You can inspect our complete source code, manifest permissions, and security architecture at any time on our official GitHub repository:
+            </p>
+            <ul>
+                <li><strong>GitHub Repository:</strong> <a href="https://github.com/gathamediaofficial-lab/AetherCall" target="_blank" rel="noopener noreferrer">https://github.com/gathamediaofficial-lab/AetherCall</a></li>
+                <li><strong>Developer Contact:</strong> <a href="mailto:gathamediaofficial@gmail.com">gathamediaofficial@gmail.com</a></li>
+            </ul>
+        </section>
+
+        <footer>
+            &copy; 2026 Gatha Media. All rights reserved. Built with privacy and security first.
+        </footer>
+    </div>
+</body>
+</html>
