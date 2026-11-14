@@ -458,7 +458,7 @@ class AetherInCallService : InCallService() {
                 Call.STATE_RINGING -> {
                     wasIncomingRinging = true
                     wasAnswered = false
-                    handleIncomingRinging(call, number)
+                    handleIncomingRinging(call, number, resolved)
                 }
                 Call.STATE_ACTIVE, Call.STATE_HOLDING -> {
                     val wasJustAnswered = !wasAnswered
@@ -470,14 +470,15 @@ class AetherInCallService : InCallService() {
                     flipDetector = null
                     IncomingCallOverlayService.stopOverlay(this@AetherInCallService)
 
-                    CallNotificationManager.cancelIncomingCallNotification(this@AetherInCallService)
-
+                    // CRITICAL: Promote ongoing notification FIRST before canceling incoming notification
+                    // so the ForegroundService never loses its phoneCall type binding for a single millisecond
                     val ongoingNotif = CallNotificationManager.buildOngoingCallNotification(
                         this@AetherInCallService,
                         call,
                         resolved,
                     )
                     promoteToForeground(CallNotificationManager.ONGOING_NOTIFICATION_ID, ongoingNotif)
+                    CallNotificationManager.cancelIncomingCallNotification(this@AetherInCallService)
 
                     if (wasJustAnswered) {
                         launchFullScreenInCall(call, number)
@@ -659,7 +660,8 @@ class AetherInCallService : InCallService() {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                 Intent.FLAG_ACTIVITY_SINGLE_TOP or
                 Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                Intent.FLAG_ACTIVITY_NO_USER_ACTION
             putExtra("CALL_NUMBER", number)
             putExtra("CALLER_NAME", CallBridge.callerName.value)
             putExtra("CALL_DIRECTION", direction)
@@ -691,11 +693,14 @@ class AetherInCallService : InCallService() {
         }
     }
 
-    private fun handleIncomingRinging(call: Call, number: String) {
+    private fun handleIncomingRinging(
+        call: Call,
+        number: String,
+        resolved: ResolvedCaller = CallerIdResolver.resolveCaller(this, number),
+    ) {
         flipDetector?.stopListening()
         autoAnswerJob?.cancel()
         IncomingCallOverlayService.stopOverlay(this)
-        val resolved = CallerIdResolver.resolveCaller(this, number)
 
         // Post native CallStyle incoming notification (renders as Samsung One UI heads-up pop-up when unlocked
         // and full-screen InCallActivity when locked — with 100% foreground launch privilege on Answer!)

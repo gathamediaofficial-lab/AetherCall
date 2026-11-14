@@ -43,6 +43,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- Gallery, Photos & Media -->
@@ -124,26 +125,35 @@
         <activity
             android:name=".ui.InCallActivity"
             android:exported="true"
-            android:launchMode="singleTop"
+            android:launchMode="singleInstance"
+            android:taskAffinity="com.aether.call.incall"
             android:excludeFromRecents="true"
             android:showOnLockScreen="true"
-            android:showWhenLocked="true"
             android:turnScreenOn="true"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
+            android:showWhenLocked="true"
+            android:directBootAware="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
             android:theme="@style/Theme.AetherCall" />
 
-        <!-- 3. IN-CALL SERVICE (REQUIRED FOR ROLE_DIALER) -->
+        <!-- 3. UNIVERSAL INCALLSERVICE: CLAIMS UI FOR ALL CALL STATES & CARRIER TYPES -->
         <service
             android:name=".telecom.AetherInCallService"
             android:permission="android.permission.BIND_INCALL_SERVICE"
             android:foregroundServiceType="phoneCall"
+            android:directBootAware="true"
             android:exported="true">
+            <!-- Tells every OEM TelecomServer that Aether Call provides the full In-Call UI -->
             <meta-data
                 android:name="android.telecom.IN_CALL_SERVICE_UI"
                 android:value="true" />
+            <!-- Prevents OEM dialer from taking over on VoWiFi / IMS / External calls -->
             <meta-data
-                android:name="android.telecom.IN_CALL_SERVICE_RINGING"
+                android:name="android.telecom.INCLUDE_EXTERNAL_CALLS"
                 android:value="true" />
+            <!-- Prevents OEM dialer from taking over when a Bluetooth headset or car kit is connected -->
+            <meta-data
+                android:name="android.telecom.IN_CALL_SERVICE_CAR_MODE_UI"
+                android:value="false" />
             <intent-filter>
                 <action android:name="android.telecom.InCallService" />
             </intent-filter>

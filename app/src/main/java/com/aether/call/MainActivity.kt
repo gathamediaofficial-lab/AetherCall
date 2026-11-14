@@ -1,6 +1,7 @@
 package com.aether.call
 
 import android.Manifest
+import android.app.NotificationManager
 import android.app.role.RoleManager
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -62,6 +63,7 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.BLACK),
         )
 
+        ensureDefaultDialerAndFullScreenPermission(this)
         viewModel.checkRoleStatus(this)
         requestAppPermissions()
 
@@ -200,6 +202,30 @@ class MainActivity : ComponentActivity() {
             viewModel.loadContacts(this)
             viewModel.loadRecentCalls(this)
             checkSpecialPermissions()
+        }
+    }
+}
+
+fun ensureDefaultDialerAndFullScreenPermission(activity: ComponentActivity) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val roleManager = activity.getSystemService(RoleManager::class.java)
+        if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_DIALER)) {
+            if (!roleManager.isRoleHeld(RoleManager.ROLE_DIALER)) {
+                val intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_DIALER)
+                @Suppress("DEPRECATION")
+                activity.startActivityForResult(intent, 1001)
+            }
+        }
+    }
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        val nm = activity.getSystemService(NotificationManager::class.java)
+        if (nm != null && !nm.canUseFullScreenIntent()) {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                Uri.parse("package:${activity.packageName}"),
+            )
+            activity.startActivity(intent)
         }
     }
 }

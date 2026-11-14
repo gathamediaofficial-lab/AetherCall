@@ -133,7 +133,12 @@ fun OneUiSettingsScreen(
         activeSubPage = null
     }
 
-    if (activeSubPage != null) {
+    if (activeSubPage == SettingsSubPage.ABOUT) {
+        AboutSettingsScreen(
+            appVersionName = "1.0.0",
+            onBack = { activeSubPage = null },
+        )
+    } else if (activeSubPage != null) {
         SubPageContainer(
             subPage = activeSubPage!!,
             userSettings = userSettings,
@@ -698,7 +703,7 @@ private fun SubPageContainer(
         SettingsSubPage.CALL_DISPLAY -> "Call display while using apps"
         SettingsSubPage.SUPPLEMENTARY_SERVICES -> "Supplementary services"
         SettingsSubPage.OTHER_SETTINGS -> "Other call settings"
-        SettingsSubPage.ABOUT -> "About Aether Call"
+        else -> ""
     }
 
     Scaffold(
@@ -1294,15 +1299,7 @@ private fun SubPageContainer(
                         }
                     }
                 }
-
-                SettingsSubPage.ABOUT -> {
-                    item {
-                        AboutSettingsScreen(
-                            appVersionName = "1.0.0",
-                            onBack = onBack,
-                        )
-                    }
-                }
+                else -> {}
             }
         }
     }

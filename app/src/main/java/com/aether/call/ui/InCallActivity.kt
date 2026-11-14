@@ -118,8 +118,24 @@ class InCallActivity : ComponentActivity(), SensorEventListener {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        configureWindowFlags()
         super.onCreate(savedInstanceState)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+            val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+            keyguardManager.requestDismissKeyguard(this, null)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
+            )
+        }
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
         com.aether.call.telecom.IncomingCallOverlayService.stopOverlay(this)
         enableEdgeToEdge()
 
@@ -202,7 +218,10 @@ class InCallActivity : ComponentActivity(), SensorEventListener {
         AudioVisualizerEngine.stop()
         releaseProximityWakeLock()
         proximityWakeLock = null
-        CallNotificationManager.cancelNotification(this)
+        // Only cancel notifications if there is no active call in CallManager
+        if (CallManager.currentCall.value == null) {
+            CallNotificationManager.cancelNotification(this)
+        }
         super.onDestroy()
     }
 
@@ -286,24 +305,6 @@ class InCallActivity : ComponentActivity(), SensorEventListener {
             proximityWakeLock?.release(PowerManager.RELEASE_FLAG_WAIT_FOR_NO_PROXIMITY)
         }
     }
-
-    private fun configureWindowFlags() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true)
-            setTurnScreenOn(true)
-            val keyguardManager = getSystemService(KeyguardManager::class.java)
-            keyguardManager?.requestDismissKeyguard(this, null)
-        } else {
-            @Suppress("DEPRECATION")
-            window.addFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
-                        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
-            )
-        }
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-    }
 }
 
 @Composable
@@ -314,7 +315,13 @@ fun InCallActivityContainer(
 ) {
     val context = LocalContext.current
     val currentCall by CallManager.currentCall.collectAsState()
-    val callState by CallBridge.callState.collectAsState()
+    val managerCallState by CallManager.callState.collectAsState()
+    val bridgeCallState by CallBridge.callState.collectAsState()
+    val callState = if (currentCall != null && bridgeCallState == Call.STATE_DISCONNECTED) {
+        managerCallState
+    } else {
+        bridgeCallState
+    }
     val isMuted by CallBridge.isMuted.collectAsState()
     val isSpeakerOn by CallBridge.isSpeakerOn.collectAsState()
     val isHoldOn by CallBridge.isHoldOn.collectAsState()
@@ -458,9 +465,14 @@ fun InCallActivityContainer(
         }
     }
 
-    // Auto-finish when call is disconnected
-    LaunchedEffect(callState) {
-        if (callState == Call.STATE_DISCONNECTED) {
+    // Auto-finish ONLY when the call is truly disconnected and removed from CallManager
+    var hasSeenActiveOrRingingCall by remember { mutableStateOf(false) }
+    LaunchedEffect(callState, currentCall) {
+        if (currentCall != null && callState != Call.STATE_DISCONNECTED) {
+            hasSeenActiveOrRingingCall = true
+        }
+        if (hasSeenActiveOrRingingCall && callState == Call.STATE_DISCONNECTED && currentCall == null) {
+            delay(350L)
             onFinish()
         }
     }
