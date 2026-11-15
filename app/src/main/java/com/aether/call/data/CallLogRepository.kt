@@ -12,9 +12,9 @@ import android.telecom.PhoneAccount
 import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
 import android.telecom.VideoProfile
-import android.widget.Toast
 import androidx.core.content.ContextCompat
 import com.aether.call.telecom.CallManager
+import com.aether.call.util.showToast
 
 /**
  * Data model for a call history record.
@@ -170,7 +170,7 @@ object CallLogRepository {
     ) {
         val cleanNumber = rawNumber.trim()
         if (cleanNumber.isBlank()) {
-            Toast.makeText(context, "Phone number is empty", Toast.LENGTH_SHORT).show()
+            context.showToast("Phone number is empty")
             return
         }
 
@@ -180,7 +180,7 @@ object CallLogRepository {
         ) == PackageManager.PERMISSION_GRANTED
 
         if (!hasCallPerm) {
-            Toast.makeText(context, "Please grant Phone permission first", Toast.LENGTH_SHORT).show()
+            context.showToast("Please grant Phone permission first")
             return
         }
 
@@ -243,7 +243,7 @@ object CallLogRepository {
             context.startActivity(openUiIntent)
         } catch (e: Exception) {
             e.printStackTrace()
-            Toast.makeText(context, "Unable to start video call: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+            context.showToast("Unable to start video call: ${e.localizedMessage}")
         }
     }
 }

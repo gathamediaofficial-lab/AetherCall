@@ -67,6 +67,8 @@ data class CallTarget(
     val isVideo: Boolean = false,
 )
 
+typealias PendingSimCall = CallTarget
+
 class DialerViewModel : ViewModel() {
 
     private val starredOverrides = java.util.concurrent.ConcurrentHashMap<Long, Boolean>()
@@ -465,6 +467,10 @@ class DialerViewModel : ViewModel() {
         viewModelScope.launch(Dispatchers.IO) {
             AppSettingsManager(context).updateMyProfile(normalizedProfile)
         }
+    }
+
+    fun updateAppThemeMode(context: Context, mode: String) = viewModelScope.launch(Dispatchers.IO) {
+        AppSettingsManager(context).updateAppThemeMode(mode)
     }
 
     fun updateDefaultSim(context: Context, slot: Int) = viewModelScope.launch(Dispatchers.IO) {
@@ -979,6 +985,19 @@ class DialerViewModel : ViewModel() {
             activeSimList.value = sims
 
             val askEveryTime = com.aether.call.util.SimAccountResolver.shouldAskSimEveryTime(context)
+            if (askEveryTime && sims.size > 1) {
+                val targetNorm = PhoneNormalizer.normalizeDigits(targetNumber)
+                val matchingContact = contactsList.value.find { c ->
+                    c.phones.any { PhoneNormalizer.normalizeDigits(it.value) == targetNorm }
+                }
+                simSelectionDialog.value = CallTarget(
+                    number = targetNumber,
+                    contactName = matchingContact?.displayName,
+                    isVideo = isVideo,
+                )
+                return@launch
+            }
+
             val slotPref = if (!askEveryTime) {
                 preferredSlot ?: AetherDatabase.getDatabase(context).simPreferenceDao().getPreferredSlot(targetNumber)
             } else {
@@ -990,7 +1009,11 @@ class DialerViewModel : ViewModel() {
                 val targetSim = sims.firstOrNull()
                 val handle = targetSim?.phoneAccountHandle
                     ?: com.aether.call.util.SimAccountResolver.findPhoneAccountHandleForSlot(context, targetSim?.slotIndex ?: 0)
-                CallLogRepository.placeCarrierCall(context, targetNumber, isVideo = isVideo, preferredAccountHandle = handle)
+                if (isVideo) {
+                    CallLogRepository.placeCarrierVideoCall(context, targetNumber, handle)
+                } else {
+                    CallLogRepository.placeCarrierCall(context, targetNumber, preferredAccountHandle = handle)
+                }
             } else {
                 val targetSlot = slotPref ?: if (defaultSlot in 0..1) defaultSlot else null
                 val matchingSim = if (targetSlot != null) {
@@ -1002,7 +1025,11 @@ class DialerViewModel : ViewModel() {
                         ?: com.aether.call.util.SimAccountResolver.findPhoneAccountHandleForSlot(context, matchingSim.slotIndex)
                     val carrierName = matchingSim.carrierName.ifBlank { "SIM" }
                     com.aether.call.telecom.CallBridge.simLabel.value = "SIM ${matchingSim.slotIndex + 1} • $carrierName"
-                    CallLogRepository.placeCarrierCall(context, targetNumber, isVideo = isVideo, preferredAccountHandle = handle)
+                    if (isVideo) {
+                        CallLogRepository.placeCarrierVideoCall(context, targetNumber, handle)
+                    } else {
+                        CallLogRepository.placeCarrierCall(context, targetNumber, preferredAccountHandle = handle)
+                    }
                 } else {
                     val targetNorm = PhoneNormalizer.normalizeDigits(targetNumber)
                     val matchingContact = contactsList.value.find { c ->
@@ -1045,7 +1072,11 @@ class DialerViewModel : ViewModel() {
             val carrierName = selectedSim?.carrierName?.ifBlank { "SIM" } ?: "SIM"
             com.aether.call.telecom.CallBridge.simLabel.value = "SIM ${slotIndex + 1} • $carrierName"
 
-            CallLogRepository.placeCarrierCall(context, targetNumber, isVideo = isVideo, preferredAccountHandle = handle)
+            if (isVideo) {
+                CallLogRepository.placeCarrierVideoCall(context, targetNumber, handle)
+            } else {
+                CallLogRepository.placeCarrierCall(context, targetNumber, preferredAccountHandle = handle)
+            }
         }
     }
 

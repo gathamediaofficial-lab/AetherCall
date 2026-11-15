@@ -35,6 +35,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aether.call.ui.theme.AetherTheme
 
 /**
  * Authentic Samsung One UI 3-tab bottom navigation bar.
@@ -48,14 +49,14 @@ fun OneUiBottomNavigation(
     val haptic = LocalHapticFeedback.current
 
     Surface(
-        color = Color(0xFF000000),
+        color = AetherTheme.colors.background,
         modifier = modifier
             .fillMaxWidth()
             .height(64.dp)
             .navigationBarsPadding(),
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            HorizontalDivider(color = Color(0xFF1E2024), thickness = 0.5.dp)
+            HorizontalDivider(color = AetherTheme.colors.divider, thickness = 0.5.dp)
 
             Row(
                 modifier = Modifier
@@ -109,8 +110,8 @@ private fun OneUiNavItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val activeColor = Color(0xFFFFFFFF)
-    val inactiveColor = Color(0xFF8E8E93)
+    val activeColor = AetherTheme.colors.textPrimary
+    val inactiveColor = AetherTheme.colors.textSecondary
     val interactionSource = remember { MutableInteractionSource() }
 
     Box(

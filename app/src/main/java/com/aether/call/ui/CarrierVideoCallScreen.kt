@@ -1,22 +1,58 @@
 package com.aether.call.ui
 
+import android.graphics.SurfaceTexture
 import android.telecom.Call
 import android.view.Surface
 import android.view.TextureView
-import android.graphics.SurfaceTexture
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.CallEnd
+import androidx.compose.material.icons.filled.Cameraswitch
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.VideocamOff
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -71,20 +107,31 @@ fun CarrierVideoCallScreen(
         }
     }
 
+    val infiniteTransition = rememberInfiniteTransition(label = "PulseTransition")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "PulseAlpha",
+    )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF090B10))
             .clickable(enabled = callState == Call.STATE_ACTIVE) {
                 controlsVisible = !controlsVisible
-            }
+            },
     ) {
         when (callState) {
             // =========================================================================
-            // PAGE 1: INCOMING VIDEO CALL SCREEN (Ringing)
+            // STAGE 1: INCOMING RINGING & OUTGOING DIALING / CONNECTING (Local Camera Full-Screen)
             // =========================================================================
-            Call.STATE_RINGING -> {
-                // Full-screen local camera preview or full-screen saved photo background
+            Call.STATE_RINGING, Call.STATE_DIALING, Call.STATE_CONNECTING -> {
+                // WhatsApp-Style Full-Screen Local Front Camera Live Preview
                 AndroidView(
                     factory = { ctx ->
                         TextureView(ctx).apply {
@@ -101,62 +148,69 @@ fun CarrierVideoCallScreen(
                             }
                         }
                     },
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
                 )
 
-                if (!callerPhotoUri.isNullOrBlank()) {
+                if (!callerPhotoUri.isNullOrBlank() && callState == Call.STATE_RINGING) {
                     AsyncImage(
                         model = ImageRequest.Builder(context).data(callerPhotoUri).crossfade(true).build(),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        alpha = 0.45f,
-                        modifier = Modifier.fillMaxSize()
+                        alpha = 0.35f,
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
 
-                // Apple-style subtle top & bottom dark gradient scrim
+                // Top & Bottom gradient scrims for contrast
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(
                             Brush.verticalGradient(
                                 colors = listOf(
-                                    Color.Black.copy(alpha = 0.75f),
+                                    Color.Black.copy(alpha = 0.70f),
                                     Color.Transparent,
-                                    Color.Black.copy(alpha = 0.85f)
-                                )
-                            )
-                        )
+                                    Color.Black.copy(alpha = 0.85f),
+                                ),
+                            ),
+                        ),
                 )
 
-                // Top iOS-style Caller Identity (No circular avatar — pure Apple Poster typography)
+                // Top Status Pill & Caller Identity
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(top = 56.dp, start = 24.dp, end = 24.dp)
+                        .padding(top = 56.dp, start = 24.dp, end = 24.dp),
                 ) {
+                    val statusText = when (callState) {
+                        Call.STATE_RINGING -> if (simLabel.isNotBlank()) "$simLabel • Incoming HD Video Call..." else "Incoming HD Video Call..."
+                        Call.STATE_DIALING -> "Calling..."
+                        Call.STATE_CONNECTING -> "Connecting video..."
+                        else -> "Connecting video..."
+                    }
+
                     Surface(
                         shape = CircleShape,
-                        color = Color.White.copy(alpha = 0.16f)
+                        color = Color.Black.copy(alpha = 0.55f),
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Videocam,
-                                contentDescription = null,
-                                tint = Color(0xFF10B981),
-                                modifier = Modifier.size(16.dp)
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF10B981).copy(alpha = pulseAlpha)),
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = if (simLabel.isNotBlank()) "$simLabel • Incoming Video Call" else "Incoming Carrier Video Call",
+                                text = statusText,
                                 color = Color.White,
                                 fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
                             )
                         }
                     }
@@ -168,7 +222,7 @@ fun CarrierVideoCallScreen(
                         color = Color.White,
                         fontSize = 36.sp,
                         fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center
+                        textAlign = TextAlign.Center,
                     )
 
                     if (callerNumber.isNotBlank() && callerNumber != callerName) {
@@ -177,85 +231,134 @@ fun CarrierVideoCallScreen(
                             text = callerNumber,
                             color = Color.White.copy(alpha = 0.78f),
                             fontSize = 18.sp,
-                            fontWeight = FontWeight.Normal
+                            fontWeight = FontWeight.Normal,
                         )
                     }
                 }
 
-                // Bottom Incoming Video Call Action Dock: Decline | Answer Audio | Accept Video
-                Row(
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(horizontal = 24.dp, vertical = 48.dp)
-                ) {
-                    // Decline Button
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        IconButton(
-                            onClick = onDeclineClick,
-                            modifier = Modifier
-                                .size(72.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFEF4444))
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CallEnd,
-                                contentDescription = "Decline",
-                                tint = Color.White,
-                                modifier = Modifier.size(32.dp)
-                            )
+                // Bottom Action Dock
+                if (callState == Call.STATE_RINGING) {
+                    // Incoming Dock: Decline | Answer Voice | Accept Video
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(horizontal = 24.dp, vertical = 48.dp),
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            IconButton(
+                                onClick = onDeclineClick,
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFEF4444)),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CallEnd,
+                                    contentDescription = "Decline",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(32.dp),
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text("Decline", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                         }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text("Decline", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                    }
 
-                    // Answer as Voice Only Button
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        IconButton(
-                            onClick = onAnswerAudioOnlyClick,
-                            modifier = Modifier
-                                .size(60.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.22f))
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Phone,
-                                contentDescription = "Answer as Audio",
-                                tint = Color.White,
-                                modifier = Modifier.size(26.dp)
-                            )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            IconButton(
+                                onClick = onAnswerAudioOnlyClick,
+                                modifier = Modifier
+                                    .size(60.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.22f)),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Phone,
+                                    contentDescription = "Answer as Audio",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(26.dp),
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text("Voice Only", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
                         }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text("Voice Only", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
-                    }
 
-                    // Accept Video Button
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        IconButton(
-                            onClick = onAnswerVideoClick,
-                            modifier = Modifier
-                                .size(72.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF10B981))
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Videocam,
-                                contentDescription = "Accept Video",
-                                tint = Color.White,
-                                modifier = Modifier.size(32.dp)
-                            )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            IconButton(
+                                onClick = onAnswerVideoClick,
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF10B981)),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Videocam,
+                                    contentDescription = "Accept Video",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(32.dp),
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text("Accept Video", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                         }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text("Accept Video", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    }
+                } else {
+                    // Outgoing Dialing / Connecting Dock: Flip Camera | End Call
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(horizontal = 24.dp, vertical = 48.dp),
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            IconButton(
+                                onClick = onFlipCamera,
+                                modifier = Modifier
+                                    .size(60.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.22f)),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Cameraswitch,
+                                    contentDescription = "Flip Camera",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(26.dp),
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text("Flip", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
+                        }
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            IconButton(
+                                onClick = onEndCallClick,
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFEF4444)),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CallEnd,
+                                    contentDescription = "End Call",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(32.dp),
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text("Cancel", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        }
                     }
                 }
             }
 
             // =========================================================================
-            // PAGE 3: END VIDEO CALL SCREEN (Disconnecting / Disconnected)
+            // STAGE 3: END VIDEO CALL SCREEN (Disconnecting / Disconnected)
             // =========================================================================
             Call.STATE_DISCONNECTING, Call.STATE_DISCONNECTED -> {
                 if (!callerPhotoUri.isNullOrBlank()) {
@@ -263,12 +366,12 @@ fun CarrierVideoCallScreen(
                         model = ImageRequest.Builder(context).data(callerPhotoUri).crossfade(true).build(),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
                     )
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.72f))
+                            .background(Color.Black.copy(alpha = 0.72f)),
                     )
                 }
 
@@ -279,14 +382,14 @@ fun CarrierVideoCallScreen(
                         .fillMaxSize()
                         .statusBarsPadding()
                         .navigationBarsPadding()
-                        .padding(horizontal = 24.dp, vertical = 56.dp)
+                        .padding(horizontal = 24.dp, vertical = 56.dp),
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = "Video Call Ended",
                             color = Color(0xFFEF4444),
                             fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
@@ -294,14 +397,14 @@ fun CarrierVideoCallScreen(
                             color = Color.White,
                             fontSize = 36.sp,
                             fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center
+                            textAlign = TextAlign.Center,
                         )
                         if (callerNumber.isNotBlank() && callerNumber != callerName) {
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = callerNumber,
                                 color = Color.White.copy(alpha = 0.7f),
-                                fontSize = 18.sp
+                                fontSize = 18.sp,
                             )
                         }
                         Spacer(modifier = Modifier.height(10.dp))
@@ -309,13 +412,13 @@ fun CarrierVideoCallScreen(
                             text = if (finalCallDuration != "00:00") "Total duration • $finalCallDuration" else "Video Call Ended",
                             color = Color.White.copy(alpha = 0.6f),
                             fontSize = 16.sp,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Medium,
                         )
                     }
 
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(48.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             IconButton(
@@ -323,7 +426,7 @@ fun CarrierVideoCallScreen(
                                 modifier = Modifier
                                     .size(64.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0xFF10B981))
+                                    .background(Color(0xFF10B981)),
                             ) {
                                 Icon(Icons.Default.Videocam, contentDescription = "Call Again", tint = Color.White)
                             }
@@ -337,7 +440,7 @@ fun CarrierVideoCallScreen(
                                 modifier = Modifier
                                     .size(64.dp)
                                     .clip(CircleShape)
-                                    .background(Color.White.copy(alpha = 0.18f))
+                                    .background(Color.White.copy(alpha = 0.18f)),
                             ) {
                                 Icon(Icons.Default.Close, contentDescription = "Done", tint = Color.White)
                             }
@@ -349,7 +452,7 @@ fun CarrierVideoCallScreen(
             }
 
             // =========================================================================
-            // PAGE 2: ACTIVE / DIALING VIDEO CALL SCREEN
+            // STAGE 2: ACTIVE CONNECTED VIDEO CALL SCREEN
             // =========================================================================
             else -> {
                 // Full-screen Remote Peer Video Surface
@@ -369,7 +472,7 @@ fun CarrierVideoCallScreen(
                             }
                         }
                     },
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
                 )
 
                 // Top-left Apple FaceTime-style frosted status pill
@@ -380,24 +483,24 @@ fun CarrierVideoCallScreen(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .statusBarsPadding()
-                        .padding(16.dp)
+                        .padding(16.dp),
                 ) {
                     Surface(
                         shape = RoundedCornerShape(24.dp),
-                        color = Color.Black.copy(alpha = 0.55f)
+                        color = Color.Black.copy(alpha = 0.55f),
                     ) {
                         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
                             Text(
                                 text = callerName,
                                 color = Color.White,
                                 fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
                             )
                             Text(
-                                text = if (callState == Call.STATE_ACTIVE) callDurationText else "Connecting Video...",
+                                text = callDurationText,
                                 color = Color(0xFF6EE7B7),
                                 fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
                             )
                         }
                     }
@@ -420,7 +523,7 @@ fun CarrierVideoCallScreen(
                                 pipOffsetY += dragAmount.y
                             }
                         }
-                        .clickable { onFlipCamera() }
+                        .clickable { onFlipCamera() },
                 ) {
                     AndroidView(
                         factory = { ctx ->
@@ -438,7 +541,7 @@ fun CarrierVideoCallScreen(
                                 }
                             }
                         },
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
 
@@ -450,24 +553,24 @@ fun CarrierVideoCallScreen(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
-                        .padding(horizontal = 20.dp, vertical = 28.dp)
+                        .padding(horizontal = 20.dp, vertical = 28.dp),
                 ) {
                     Surface(
                         shape = RoundedCornerShape(32.dp),
                         color = Color.Black.copy(alpha = 0.65f),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
                         Row(
                             horizontalArrangement = Arrangement.SpaceEvenly,
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(vertical = 14.dp, horizontal = 12.dp)
+                            modifier = Modifier.padding(vertical = 14.dp, horizontal = 12.dp),
                         ) {
                             IconButton(
                                 onClick = onFlipCamera,
                                 modifier = Modifier
                                     .size(52.dp)
                                     .clip(CircleShape)
-                                    .background(Color.White.copy(alpha = 0.16f))
+                                    .background(Color.White.copy(alpha = 0.16f)),
                             ) {
                                 Icon(Icons.Default.Cameraswitch, contentDescription = "Flip Camera", tint = Color.White)
                             }
@@ -477,12 +580,12 @@ fun CarrierVideoCallScreen(
                                 modifier = Modifier
                                     .size(52.dp)
                                     .clip(CircleShape)
-                                    .background(if (isMuted) Color.White else Color.White.copy(alpha = 0.16f))
+                                    .background(if (isMuted) Color.White else Color.White.copy(alpha = 0.16f)),
                             ) {
                                 Icon(
                                     imageVector = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
                                     contentDescription = "Mute",
-                                    tint = if (isMuted) Color.Black else Color.White
+                                    tint = if (isMuted) Color.Black else Color.White,
                                 )
                             }
 
@@ -491,12 +594,12 @@ fun CarrierVideoCallScreen(
                                 modifier = Modifier
                                     .size(52.dp)
                                     .clip(CircleShape)
-                                    .background(if (isSpeakerOn) Color.White else Color.White.copy(alpha = 0.16f))
+                                    .background(if (isSpeakerOn) Color.White else Color.White.copy(alpha = 0.16f)),
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.VolumeUp,
                                     contentDescription = "Speaker",
-                                    tint = if (isSpeakerOn) Color.Black else Color.White
+                                    tint = if (isSpeakerOn) Color.Black else Color.White,
                                 )
                             }
 
@@ -505,7 +608,7 @@ fun CarrierVideoCallScreen(
                                 modifier = Modifier
                                     .size(52.dp)
                                     .clip(CircleShape)
-                                    .background(Color.White.copy(alpha = 0.16f))
+                                    .background(Color.White.copy(alpha = 0.16f)),
                             ) {
                                 Icon(Icons.Default.VideocamOff, contentDescription = "Voice Only", tint = Color.White)
                             }
@@ -515,7 +618,7 @@ fun CarrierVideoCallScreen(
                                 modifier = Modifier
                                     .size(56.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0xFFEF4444))
+                                    .background(Color(0xFFEF4444)),
                             ) {
                                 Icon(Icons.Default.CallEnd, contentDescription = "End Call", tint = Color.White)
                             }

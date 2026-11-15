@@ -38,6 +38,8 @@ object CallBridge {
     }
 
     fun answerCall(asVideo: Boolean = CallManager.isVideoCall.value) {
+        // Stop incoming ringtone immediately
+        CallRingtonePlayer.stop()
         // 1. Immediately answer the Telecom call
         try {
             CallManager.answer(asVideo)
@@ -49,6 +51,7 @@ object CallBridge {
     }
 
     fun answerCallAsAudioOnly() {
+        CallRingtonePlayer.stop()
         try {
             CallManager.answerAsAudioOnly()
         } catch (_: Exception) {
@@ -58,6 +61,7 @@ object CallBridge {
     }
 
     fun rejectCall() {
+        CallRingtonePlayer.stop()
         try {
             CallManager.currentCall.value?.reject(false, null)
         } catch (_: Exception) {
@@ -66,6 +70,7 @@ object CallBridge {
     }
 
     fun disconnectCall() {
+        CallRingtonePlayer.stop()
         try {
             CallManager.currentCall.value?.disconnect()
         } catch (_: Exception) {

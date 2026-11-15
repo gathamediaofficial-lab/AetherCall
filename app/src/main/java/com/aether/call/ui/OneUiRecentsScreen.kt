@@ -87,6 +87,7 @@ fun OneUiRecentsScreen(
     onClearMissedFilter: () -> Unit = {},
     onCallClick: (String) -> Unit,
     onMessageClick: (String) -> Unit,
+    onVideoCallClick: (String) -> Unit = {},
     onCallDetailsClick: (CallLogItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -341,7 +342,7 @@ fun OneUiRecentsScreen(
                                                                 icon = Icons.Default.Videocam,
                                                                 bgColor = Color(0xFF10B981),
                                                                 onClick = {
-                                                                    com.aether.call.data.CallLogRepository.placeCarrierVideoCall(context, log.number)
+                                                                    onVideoCallClick(log.number)
                                                                 },
                                                             )
                                                             RecentsActionCircle(

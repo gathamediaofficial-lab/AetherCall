@@ -40,6 +40,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aether.call.ui.theme.AetherTheme
 
 /**
  * Unified Samsung One UI top header with live search expansion and tab-specific actions.
@@ -64,7 +65,7 @@ fun OneUiTopHeader(
     val haptic = LocalHapticFeedback.current
 
     Surface(
-        color = Color(0xFF000000),
+        color = AetherTheme.colors.background,
         modifier = modifier
             .fillMaxWidth()
             .statusBarsPadding(),
@@ -82,7 +83,7 @@ fun OneUiTopHeader(
                         style = TextStyle(
                             fontSize = 30.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = Color.White,
+                            color = AetherTheme.colors.textPrimary,
                         ),
                     )
                     if (currentTab == NavigationTab.CONTACTS) {
@@ -90,7 +91,7 @@ fun OneUiTopHeader(
                             text = "$contactsCount contacts with phone numbers",
                             style = TextStyle(
                                 fontSize = 13.sp,
-                                color = Color(0xFF8E8E93),
+                                color = AetherTheme.colors.textSecondary,
                             ),
                         )
                     }
@@ -105,7 +106,7 @@ fun OneUiTopHeader(
                             Icon(
                                 imageVector = Icons.Default.Add,
                                 contentDescription = "Create contact",
-                                tint = Color.White,
+                                tint = AetherTheme.colors.textPrimary,
                             )
                         }
                     }
@@ -118,7 +119,7 @@ fun OneUiTopHeader(
                             Icon(
                                 imageVector = Icons.Default.Tune,
                                 contentDescription = "Filter calls",
-                                tint = if (isMissedFilterActive) Color(0xFF10B981) else Color.White,
+                                tint = if (isMissedFilterActive) Color(0xFF10B981) else AetherTheme.colors.textPrimary,
                             )
                         }
                     }
@@ -130,7 +131,7 @@ fun OneUiTopHeader(
                         Icon(
                             imageVector = Icons.Default.Search,
                             contentDescription = "Search",
-                            tint = Color.White,
+                            tint = AetherTheme.colors.textPrimary,
                         )
                     }
 
@@ -142,14 +143,14 @@ fun OneUiTopHeader(
                             Icon(
                                 imageVector = Icons.Default.MoreVert,
                                 contentDescription = "More options",
-                                tint = Color.White,
+                                tint = AetherTheme.colors.textPrimary,
                             )
                         }
 
                         DropdownMenu(
                             expanded = showOverflowMenu,
                             onDismissRequest = onDismissOverflowMenu,
-                            containerColor = Color(0xFF1E2024),
+                            containerColor = AetherTheme.colors.surface,
                             shape = RoundedCornerShape(20.dp),
                             content = overflowMenuContent,
                         )
@@ -176,13 +177,13 @@ fun OneUiTopHeader(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Close search",
-                        tint = Color.White,
+                        tint = AetherTheme.colors.textPrimary,
                     )
                 }
 
                 Surface(
                     shape = RoundedCornerShape(24.dp),
-                    color = Color(0xFF1E2024),
+                    color = AetherTheme.colors.surface,
                     modifier = Modifier
                         .weight(1f)
                         .height(46.dp),
@@ -197,7 +198,7 @@ fun OneUiTopHeader(
                             value = searchQuery,
                             onValueChange = onQueryChange,
                             singleLine = true,
-                            textStyle = TextStyle(color = Color.White, fontSize = 15.sp),
+                            textStyle = TextStyle(color = AetherTheme.colors.textPrimary, fontSize = 15.sp),
                             cursorBrush = SolidColor(Color(0xFF10B981)),
                             modifier = Modifier
                                 .weight(1f)
@@ -207,7 +208,7 @@ fun OneUiTopHeader(
                                     if (searchQuery.isEmpty()) {
                                         Text(
                                             text = "Search contacts, numbers...",
-                                            style = TextStyle(color = Color(0xFF8E8E93), fontSize = 15.sp),
+                                            style = TextStyle(color = AetherTheme.colors.textSecondary, fontSize = 15.sp),
                                         )
                                     }
                                     innerTextField()
@@ -223,7 +224,7 @@ fun OneUiTopHeader(
                                 Icon(
                                     imageVector = Icons.Default.Close,
                                     contentDescription = "Clear search",
-                                    tint = Color(0xFF8E8E93),
+                                    tint = AetherTheme.colors.textSecondary,
                                 )
                             }
                         }

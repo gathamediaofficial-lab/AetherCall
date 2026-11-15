@@ -10,7 +10,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
-import android.widget.Toast
+import com.aether.call.util.showToast
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.io.File
@@ -114,11 +114,7 @@ object CallRecordingManager {
                 _lastSavedFileName.value = displayFileName
                 _isRecording.value = true
 
-                Toast.makeText(
-                    context,
-                    "Recording started: $displayFileName",
-                    Toast.LENGTH_SHORT,
-                ).show()
+                context.showToast("Recording started: $displayFileName")
                 return true
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -126,11 +122,7 @@ object CallRecordingManager {
             }
         }
 
-        Toast.makeText(
-            context,
-            "Unable to start call recording. Check microphone permission.",
-            Toast.LENGTH_SHORT,
-        ).show()
+        context.showToast("Unable to start call recording. Check microphone permission.")
         return false
     }
 
@@ -209,11 +201,7 @@ object CallRecordingManager {
     fun shareLastRecording(context: Context) {
         val uri = _lastSavedRecordingUri.value ?: activeOutputUri
         if (uri == null) {
-            Toast.makeText(
-                context,
-                "No saved call recording found yet. Stop recording first to transfer.",
-                Toast.LENGTH_SHORT,
-            ).show()
+            context.showToast("No saved call recording found yet. Stop recording first to transfer.")
             return
         }
 
@@ -228,7 +216,7 @@ object CallRecordingManager {
             }
             context.startActivity(chooser)
         } catch (e: Exception) {
-            Toast.makeText(context, "Unable to share recording: ${e.message}", Toast.LENGTH_SHORT).show()
+            context.showToast("Unable to share recording: ${e.message}")
         }
     }
 

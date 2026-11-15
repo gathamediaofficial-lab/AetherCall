@@ -41,10 +41,39 @@ enum class IncomingCallLayoutStyle(
     }
 }
 
+enum class AppThemeMode(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+) {
+    SYSTEM(
+        id = "SYSTEM",
+        title = "System default",
+        subtitle = "Follow system theme settings",
+    ),
+    LIGHT(
+        id = "LIGHT",
+        title = "Light",
+        subtitle = "Always use light theme",
+    ),
+    DARK(
+        id = "DARK",
+        title = "Dark",
+        subtitle = "Always use dark theme",
+    );
+
+    companion object {
+        fun fromId(id: String?): AppThemeMode {
+            return entries.find { it.id.equals(id, ignoreCase = true) } ?: SYSTEM
+        }
+    }
+}
+
 /**
  * Settings configuration data model matching Samsung One UI Call Settings options.
  */
 data class UserAppSettings(
+    val appThemeMode: String = AppThemeMode.SYSTEM.id,
     val defaultSimSlot: Int = -1, // -1 = Always Ask, 0 = SIM 1, 1 = SIM 2
     val ancLevel: Float = 0.5f,
     val hapticsEnabled: Boolean = true,
@@ -82,6 +111,7 @@ data class UserAppSettings(
  * DataStore preferences key definitions.
  */
 object PreferencesKeys {
+    val APP_THEME_MODE = stringPreferencesKey("app_theme_mode")
     val DEFAULT_SIM_SLOT = intPreferencesKey("default_sim_slot")
     val ANC_LEVEL = floatPreferencesKey("anc_level")
     val HAPTICS_ENABLED = booleanPreferencesKey("haptics_enabled")
@@ -143,6 +173,7 @@ class AppSettingsManager(private val context: Context) {
         }
         .map { prefs ->
             UserAppSettings(
+                appThemeMode = prefs[PreferencesKeys.APP_THEME_MODE] ?: AppThemeMode.SYSTEM.id,
                 defaultSimSlot = prefs[PreferencesKeys.DEFAULT_SIM_SLOT] ?: -1,
                 ancLevel = prefs[PreferencesKeys.ANC_LEVEL] ?: 0.5f,
                 hapticsEnabled = prefs[PreferencesKeys.HAPTICS_ENABLED] ?: true,
@@ -249,6 +280,7 @@ class AppSettingsManager(private val context: Context) {
     suspend fun updateSettings(transform: (UserAppSettings) -> UserAppSettings) {
         context.dataStore.edit { prefs ->
             val current = UserAppSettings(
+                appThemeMode = prefs[PreferencesKeys.APP_THEME_MODE] ?: AppThemeMode.SYSTEM.id,
                 defaultSimSlot = prefs[PreferencesKeys.DEFAULT_SIM_SLOT] ?: -1,
                 ancLevel = prefs[PreferencesKeys.ANC_LEVEL] ?: 0.5f,
                 hapticsEnabled = prefs[PreferencesKeys.HAPTICS_ENABLED] ?: true,
@@ -281,6 +313,7 @@ class AppSettingsManager(private val context: Context) {
                 assistedDialingIndia = prefs[PreferencesKeys.ASSISTED_DIALING_INDIA] ?: true,
             )
             val updated = transform(current)
+            prefs[PreferencesKeys.APP_THEME_MODE] = updated.appThemeMode
             prefs[PreferencesKeys.DEFAULT_SIM_SLOT] = updated.defaultSimSlot
             prefs[PreferencesKeys.ANC_LEVEL] = updated.ancLevel
             prefs[PreferencesKeys.HAPTICS_ENABLED] = updated.hapticsEnabled
@@ -319,6 +352,7 @@ class AppSettingsManager(private val context: Context) {
         }
     }
 
+    suspend fun updateAppThemeMode(mode: String) = updateSettings { it.copy(appThemeMode = mode) }
     suspend fun setDefaultSimSlot(slot: Int) = updateSettings { it.copy(defaultSimSlot = slot) }
     suspend fun setAncLevel(level: Float) = updateSettings { it.copy(ancLevel = level) }
     suspend fun setHapticsEnabled(enabled: Boolean) = updateSettings { it.copy(hapticsEnabled = enabled) }

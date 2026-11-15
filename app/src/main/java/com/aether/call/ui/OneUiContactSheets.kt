@@ -10,6 +10,7 @@ import android.provider.CalendarContract
 import android.provider.CallLog
 import android.text.format.DateUtils
 import android.widget.Toast
+import com.aether.call.util.showToast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -178,7 +179,7 @@ private fun safeLaunchIntent(context: Context, intent: Intent) {
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
         context.startActivity(intent)
     } catch (_: ActivityNotFoundException) {
-        Toast.makeText(context, "No compatible app found", Toast.LENGTH_SHORT).show()
+        context.showToast("No compatible app found")
     } catch (_: Exception) {
     }
 }
@@ -222,7 +223,7 @@ private fun syncBirthdayToCalendarWithReminder(
         }
         context.startActivity(intent)
     } catch (_: Exception) {
-        Toast.makeText(context, "Calendar app not available", Toast.LENGTH_SHORT).show()
+        context.showToast("Calendar app not available")
     }
 }
 
@@ -237,7 +238,7 @@ private fun launchEmailAppChooser(context: Context, emailAddress: String) {
         }
         context.startActivity(chooser)
     } catch (_: Exception) {
-        Toast.makeText(context, "No email app installed", Toast.LENGTH_SHORT).show()
+        context.showToast("No email app installed")
     }
 }
 
@@ -250,7 +251,7 @@ private fun launchMapsNavigation(context: Context, address: String) {
         }
         context.startActivity(mapIntent)
     } catch (_: Exception) {
-        Toast.makeText(context, "No maps app installed", Toast.LENGTH_SHORT).show()
+        context.showToast("No maps app installed")
     }
 }
 
@@ -314,7 +315,7 @@ fun OneUiContactCardScreen(
         if (callGranted && cameraGranted && !targetNum.isNullOrBlank()) {
             com.aether.call.data.CallLogRepository.placeCarrierVideoCall(context, targetNum)
         } else if (!targetNum.isNullOrBlank()) {
-            Toast.makeText(context, "Camera and Phone permissions are required for Video Calls", Toast.LENGTH_SHORT).show()
+            context.showToast("Camera and Phone permissions are required for Video Calls")
         }
     }
 
@@ -686,7 +687,7 @@ fun OneUiContactCardScreen(
                                         orderedPhones.add(0, chosen)
                                         coroutineScope.launch {
                                             ContactsRepository.setPrimaryPhoneNumber(context, contact.id, chosen.value)
-                                            Toast.makeText(context, "${chosen.value} set as primary number", Toast.LENGTH_SHORT).show()
+                                            context.showToast("${chosen.value} set as primary number")
                                         }
                                     }
                                 },
@@ -973,11 +974,9 @@ fun OneUiContactCardScreen(
                                         isEmergency = checked
                                         coroutineScope.launch {
                                             ContactsRepository.setEmergencyContactStatus(context, contact.id, checked)
-                                            Toast.makeText(
-                                                context,
-                                                if (checked) "Added to ICE Emergency Contacts" else "Removed from Emergency Contacts",
-                                                Toast.LENGTH_SHORT,
-                                            ).show()
+                                            context.showToast(
+                                                if (checked) "Added to ICE Emergency Contacts" else "Removed from Emergency Contacts"
+                                            )
                                         }
                                     },
                                     colors = SwitchDefaults.colors(
@@ -1117,11 +1116,7 @@ fun OneUiContactCardScreen(
                                                 contact = contact.copy(phones = orderedPhones.toList(), isStarred = localStarred),
                                                 selectedAccountKeys = selectedStorageKeys.toList(),
                                             )
-                                            Toast.makeText(
-                                                context,
-                                                "Saved contact to ${selectedStorageKeys.size} storage location(s)",
-                                                Toast.LENGTH_SHORT,
-                                            ).show()
+                                            context.showToast("Saved contact to ${selectedStorageKeys.size} storage location(s)")
                                         }
                                     },
                                 )

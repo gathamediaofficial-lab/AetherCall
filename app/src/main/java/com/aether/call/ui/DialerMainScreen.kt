@@ -1,9 +1,11 @@
 package com.aether.call.ui
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.CallLog
 import android.provider.ContactsContract
+import android.telecom.PhoneAccount
 import android.telecom.TelecomManager
 import android.telecom.VideoProfile
 import androidx.activity.compose.BackHandler
@@ -470,6 +472,7 @@ fun DialerMainScreen(
                                     onClearMissedFilter = { isMissedFilterActive = false },
                                     onCallClick = { number -> viewModel.placeOutgoingCall(context, number) },
                                     onMessageClick = { number -> viewModel.launchSms(context, number) },
+                                    onVideoCallClick = { number -> viewModel.placeOutgoingCall(context, number, isVideo = true) },
                                     onCallDetailsClick = { log ->
                                         val norm = PhoneNormalizer.normalizeDigits(log.number)
                                         val matched = contacts.find { c ->
@@ -535,6 +538,7 @@ fun DialerMainScreen(
 
         // Dual-SIM Selection Dialog
         simSelectionDialog?.let { pendingCall ->
+            val telecomManager = remember(context) { context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager }
             AlertDialog(
                 onDismissRequest = { viewModel.dismissSimSelectionDialog() },
                 containerColor = Color(0xFF1E2024),
@@ -542,7 +546,7 @@ fun DialerMainScreen(
                 title = {
                     Column {
                         Text(
-                            text = "Select SIM card",
+                            text = if (pendingCall.isVideo) "Select SIM for video call" else "Select SIM card",
                             color = Color.White,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
@@ -558,6 +562,11 @@ fun DialerMainScreen(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         activeSims.forEachIndexed { idx, sim ->
+                            val handleToUse = sim.phoneAccountHandle
+                                ?: com.aether.call.util.SimAccountResolver.findPhoneAccountHandleForSlot(context, sim.slotIndex)
+                            val account = if (handleToUse != null) telecomManager?.getPhoneAccount(handleToUse) else null
+                            val isVideoCapable = account?.hasCapabilities(PhoneAccount.CAPABILITY_VIDEO_CALLING) == true
+
                             Surface(
                                 onClick = {
                                     viewModel.selectSimAndMakeCall(context, pendingCall.number, sim.slotIndex)
@@ -588,14 +597,22 @@ fun DialerMainScreen(
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column {
                                         Text(
-                                            text = "SIM ${idx + 1} • ${sim.carrierName}",
+                                            text = if (pendingCall.isVideo) {
+                                                "SIM ${idx + 1} • ${sim.carrierName} (${if (isVideoCapable) "HD Video Supported" else "Voice Only"})"
+                                            } else {
+                                                "SIM ${idx + 1} • ${sim.carrierName}"
+                                            },
                                             color = Color.White,
                                             fontSize = 15.sp,
                                             fontWeight = FontWeight.SemiBold,
                                         )
                                         Text(
-                                            text = "Slot ${sim.slotIndex + 1}",
-                                            color = Color(0xFF8E8E93),
+                                            text = if (pendingCall.isVideo) {
+                                                if (isVideoCapable) "HD Video Supported" else "Voice Only"
+                                            } else {
+                                                "Slot ${sim.slotIndex + 1}"
+                                            },
+                                            color = if (pendingCall.isVideo && isVideoCapable) Color(0xFF10B981) else Color(0xFF8E8E93),
                                             fontSize = 12.sp,
                                         )
                                     }

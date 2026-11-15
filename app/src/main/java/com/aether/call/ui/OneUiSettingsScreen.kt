@@ -9,6 +9,7 @@ import android.os.Build
 import android.provider.Settings
 import android.telecom.TelecomManager
 import android.widget.Toast
+import com.aether.call.util.showToast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -39,6 +40,10 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.RemoveCircle
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
+import com.aether.call.data.AppThemeMode
+import com.aether.call.ui.theme.AetherTheme
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -50,8 +55,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -81,6 +84,7 @@ import androidx.compose.ui.unit.sp
 import com.aether.call.data.UserAppSettings
 
 enum class SettingsSubPage {
+    APP_THEME,
     BLOCK_NUMBERS,
     RECORD_CALLS,
     CALL_BACKGROUND,
@@ -98,9 +102,9 @@ private fun safeLaunchIntent(context: Context, intent: Intent) {
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
         context.startActivity(intent)
     } catch (_: ActivityNotFoundException) {
-        Toast.makeText(context, "Not supported on this carrier/device", Toast.LENGTH_SHORT).show()
+        context.showToast("Not supported on this carrier/device")
     } catch (_: Exception) {
-        Toast.makeText(context, "Not supported on this carrier/device", Toast.LENGTH_SHORT).show()
+        context.showToast("Not supported on this carrier/device")
     }
 }
 
@@ -237,10 +241,21 @@ fun OneUiSettingsScreen(
                 item {
                     Surface(
                         shape = RoundedCornerShape(22.dp),
-                        color = Color(0xFF1E2024),
+                        color = AetherTheme.colors.surface,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Column {
+                            SettingsTile(
+                                title = "App theme",
+                                subtitle = AppThemeMode.fromId(userSettings.appThemeMode).title,
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    activeSubPage = SettingsSubPage.APP_THEME
+                                },
+                            )
+
+                            HorizontalDivider(color = AetherTheme.colors.divider, thickness = 0.5.dp)
+
                             SettingsTile(
                                 title = "Call background",
                                 subtitle = userSettings.callBackgroundTheme,
@@ -691,16 +706,17 @@ private fun SubPageContainer(
                 try {
                     RingtoneManager.setActualDefaultRingtoneUri(context, RingtoneManager.TYPE_RINGTONE, pickedUri)
                     val ringtoneTitle = RingtoneManager.getRingtone(context, pickedUri)?.getTitle(context) ?: "Selected Ringtone"
-                    Toast.makeText(context, "Ringtone updated: $ringtoneTitle", Toast.LENGTH_SHORT).show()
+                    context.showToast("Ringtone updated: $ringtoneTitle")
                 } catch (e: Exception) {
                     e.printStackTrace()
-                    Toast.makeText(context, "Ringtone updated", Toast.LENGTH_SHORT).show()
+                    context.showToast("Ringtone updated")
                 }
             }
         }
     }
 
     val title = when (subPage) {
+        SettingsSubPage.APP_THEME -> "App theme"
         SettingsSubPage.BLOCK_NUMBERS -> "Block numbers"
         SettingsSubPage.RECORD_CALLS -> "Record calls"
         SettingsSubPage.CALL_BACKGROUND -> "Call background"
@@ -714,7 +730,7 @@ private fun SubPageContainer(
     }
 
     Scaffold(
-        containerColor = Color(0xFF000000),
+        containerColor = AetherTheme.colors.background,
         topBar = {
             Row(
                 modifier = Modifier
@@ -730,7 +746,7 @@ private fun SubPageContainer(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
-                        tint = Color.White,
+                        tint = AetherTheme.colors.textPrimary,
                     )
                 }
 
@@ -738,7 +754,7 @@ private fun SubPageContainer(
                     text = title,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color.White,
+                    color = AetherTheme.colors.textPrimary,
                 )
             }
         },
@@ -752,6 +768,61 @@ private fun SubPageContainer(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             when (subPage) {
+                SettingsSubPage.APP_THEME -> {
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(22.dp),
+                            color = AetherTheme.colors.surface,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column {
+                                AppThemeMode.entries.forEachIndexed { index, mode ->
+                                    val isSelected = userSettings.appThemeMode.equals(mode.id, ignoreCase = true)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                viewModel.updateAppThemeMode(context, mode.id)
+                                            }
+                                            .padding(horizontal = 20.dp, vertical = 16.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = mode.title,
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = AetherTheme.colors.textPrimary,
+                                            )
+                                            Text(
+                                                text = mode.subtitle,
+                                                fontSize = 13.sp,
+                                                color = AetherTheme.colors.textSecondary,
+                                            )
+                                        }
+
+                                        RadioButton(
+                                            selected = isSelected,
+                                            onClick = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                viewModel.updateAppThemeMode(context, mode.id)
+                                            },
+                                            colors = RadioButtonDefaults.colors(
+                                                selectedColor = Color(0xFF10B981),
+                                                unselectedColor = AetherTheme.colors.textSecondary,
+                                            ),
+                                        )
+                                    }
+
+                                    if (index < AppThemeMode.entries.size - 1) {
+                                        HorizontalDivider(color = AetherTheme.colors.divider, thickness = 0.5.dp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 SettingsSubPage.BLOCK_NUMBERS -> {
                     item {
                         var numberToBlock by remember { mutableStateOf("") }
@@ -1073,7 +1144,7 @@ private fun SubPageContainer(
                                         try {
                                             ringtoneLauncher.launch(intent)
                                         } catch (_: Exception) {
-                                            Toast.makeText(context, "Not supported on this carrier/device", Toast.LENGTH_SHORT).show()
+                                            context.showToast("Not supported on this carrier/device")
                                         }
                                     },
                                 )

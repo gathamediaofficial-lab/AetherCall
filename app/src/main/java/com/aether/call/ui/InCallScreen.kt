@@ -4,6 +4,10 @@ import android.content.Intent
 import android.net.Uri
 import android.telecom.Call
 import android.view.Surface
+import android.widget.Toast
+import com.aether.call.util.showToast
+import androidx.compose.runtime.collectAsState
+import com.aether.call.telecom.CallManager
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
@@ -202,6 +206,20 @@ fun InCallScreen(
 
     var finalCallDuration by remember { mutableStateOf("00:00") }
     var wasRecordedDuringCall by remember { mutableStateOf(false) }
+
+    val canUpgradeToVideo by CallManager.canUpgradeToVideo.collectAsState()
+    val videoDowngradedNotice by CallManager.videoDowngradedNotice.collectAsState()
+
+    LaunchedEffect(videoDowngradedNotice) {
+        val notice = videoDowngradedNotice
+        if (!notice.isNullOrBlank()) {
+            context.showToast(notice, Toast.LENGTH_LONG)
+            CallManager.clearVideoDowngradedNotice()
+        }
+    }
+
+    val isVideoEnabled = canUpgradeToVideo && callState == Call.STATE_ACTIVE
+    val videoButtonLabel = if (canUpgradeToVideo) "Video call" else "Unavailable"
 
     LaunchedEffect(callDurationText, isRecording) {
         if (callDurationText != "00:00") {
@@ -852,10 +870,10 @@ fun InCallScreen(
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                                 OneUiFocusGridButton(
                                     icon = Icons.Default.Videocam,
-                                    label = if (isVideoCall) "Voice call" else "Video call",
+                                    label = videoButtonLabel,
                                     isActive = isVideoCall,
                                     activeColor = Color(0xFF10B981),
-                                    enabled = !isDialing,
+                                    enabled = isVideoEnabled,
                                     onClick = {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         onVideoToggle()

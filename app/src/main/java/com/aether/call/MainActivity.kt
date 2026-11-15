@@ -76,20 +76,39 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val isDefault by viewModel.isDefaultDialer.collectAsState()
+            val userSettings by viewModel.userSettings.collectAsState()
+            val isDark = com.aether.call.ui.theme.isAppInDarkTheme(userSettings.appThemeMode)
 
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = Color(0xFF000000),
-            ) {
-                if (!isDefault) {
-                    DefaultDialerPromptScreen(
-                        onRequestDefaultDialer = { launchSetDefaultDialer() },
-                    )
-                } else {
-                    DialerMainScreen(
-                        viewModel = viewModel,
-                        onRequestDefaultDialer = { launchSetDefaultDialer() },
-                    )
+            androidx.compose.runtime.SideEffect {
+                enableEdgeToEdge(
+                    statusBarStyle = if (isDark) {
+                        SystemBarStyle.dark(android.graphics.Color.BLACK)
+                    } else {
+                        SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+                    },
+                    navigationBarStyle = if (isDark) {
+                        SystemBarStyle.dark(android.graphics.Color.BLACK)
+                    } else {
+                        SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+                    },
+                )
+            }
+
+            com.aether.call.ui.theme.AetherTheme(appThemeMode = userSettings.appThemeMode) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = com.aether.call.ui.theme.AetherTheme.colors.background,
+                ) {
+                    if (!isDefault) {
+                        DefaultDialerPromptScreen(
+                            onRequestDefaultDialer = { launchSetDefaultDialer() },
+                        )
+                    } else {
+                        DialerMainScreen(
+                            viewModel = viewModel,
+                            onRequestDefaultDialer = { launchSetDefaultDialer() },
+                        )
+                    }
                 }
             }
         }

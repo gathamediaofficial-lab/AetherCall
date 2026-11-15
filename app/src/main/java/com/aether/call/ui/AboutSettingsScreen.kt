@@ -2,7 +2,7 @@ package com.aether.call.ui
 
 import android.content.Intent
 import android.net.Uri
-import android.widget.Toast
+import com.aether.call.util.showToast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -306,20 +306,12 @@ fun AboutSettingsScreen(
                                                     is GitHubUpdateChecker.UpdateCheckResult.UpToDate -> {
                                                         updateStatusSubtitle = "You are on the latest version ($resolvedVersion)"
                                                         updateStatusColor = Color(0xFF9E9E9E)
-                                                        Toast.makeText(
-                                                            context,
-                                                            "You are already on the latest version",
-                                                            Toast.LENGTH_SHORT,
-                                                        ).show()
+                                                        context.showToast("You are already on the latest version")
                                                     }
                                                     is GitHubUpdateChecker.UpdateCheckResult.Error -> {
                                                         updateStatusSubtitle = "Unable to check updates"
                                                         updateStatusColor = Color(0xFFEF4444)
-                                                        Toast.makeText(
-                                                            context,
-                                                            "Unable to check updates: ${result.message}",
-                                                            Toast.LENGTH_SHORT,
-                                                        ).show()
+                                                        context.showToast("Unable to check updates: ${result.message}")
                                                     }
                                                 }
                                             }

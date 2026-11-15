@@ -147,12 +147,22 @@ object CallManager {
     private val _isVideoCall = MutableStateFlow(false)
     val isVideoCall: StateFlow<Boolean> = _isVideoCall.asStateFlow()
 
-    private var pendingOutgoingVideoCall = false
+    private val _canUpgradeToVideo = MutableStateFlow(false)
+    val canUpgradeToVideo: StateFlow<Boolean> = _canUpgradeToVideo.asStateFlow()
+
+    private val _videoDowngradedNotice = MutableStateFlow<String?>(null)
+    val videoDowngradedNotice: StateFlow<String?> = _videoDowngradedNotice.asStateFlow()
+
+    private var requestedOutgoingVideo = false
 
     fun prepareOutgoingVideoCall() {
-        pendingOutgoingVideoCall = true
-        _isVideoCall.value = true
+        requestedOutgoingVideo = true
         _isFrontCamera.value = true
+        // Do NOT force _isVideoCall = true yet; wait for Telecom's actual videoState in syncVideoCallState()
+    }
+
+    fun clearVideoDowngradedNotice() {
+        _videoDowngradedNotice.value = null
     }
 
     private val _incomingVideoUpgradeRequest = MutableStateFlow(false)
@@ -200,32 +210,51 @@ object CallManager {
         ) {}
     }
 
+    /**
+     * Strictly mirrors Telecom's real Call.Details videoState and IMS capabilities.
+     * Prevents fake video UI when cross-operator calls (e.g. Jio -> Airtel) connect as audio-only.
+     */
     fun syncVideoCallState(call: Call?) {
         if (call == null) {
-            pendingOutgoingVideoCall = false
+            requestedOutgoingVideo = false
             _isVideoCall.value = false
+            _canUpgradeToVideo.value = false
             _incomingVideoUpgradeRequest.value = false
             return
         }
 
-        val vState = call.details?.videoState ?: VideoProfile.STATE_AUDIO_ONLY
+        val details = call.details
+        val vState = details?.videoState ?: VideoProfile.STATE_AUDIO_ONLY
         @Suppress("DEPRECATION")
         val cState = call.state
 
+        // Check real-time IMS ViLTE capabilities for both local SIM and remote recipient
+        val localVtSupported = details?.can(Call.Details.CAPABILITY_SUPPORTS_VT_LOCAL_BIDIRECTIONAL) == true
+        val remoteVtSupported = details?.can(Call.Details.CAPABILITY_SUPPORTS_VT_REMOTE_BIDIRECTIONAL) == true
+        _canUpgradeToVideo.value = localVtSupported && remoteVtSupported
+
+        val telecomIsVideo = VideoProfile.isVideo(vState)
+
+        // Only allow video UI while dialing if Telecom actually initiated a video session
         val activeVideo = when {
-            VideoProfile.isVideo(vState) -> {
-                pendingOutgoingVideoCall = false
+            telecomIsVideo -> {
+                requestedOutgoingVideo = false
                 true
             }
-            pendingOutgoingVideoCall && (
-                    cState == Call.STATE_DIALING ||
-                            cState == Call.STATE_CONNECTING ||
-                            cState == Call.STATE_SELECT_PHONE_ACCOUNT ||
-                            cState == Call.STATE_NEW
-                    ) -> {
+            // If user requested video, only show dialing video preview while STATE_DIALING/CONNECTING
+            // AND local SIM supports video; once STATE_ACTIVE hits without videoState, drop immediately to audio!
+            requestedOutgoingVideo &&
+                (cState == Call.STATE_DIALING || cState == Call.STATE_CONNECTING) &&
+                localVtSupported -> {
                 true
             }
-            else -> false
+            else -> {
+                if (requestedOutgoingVideo && cState == Call.STATE_ACTIVE && !telecomIsVideo) {
+                    requestedOutgoingVideo = false
+                    _videoDowngradedNotice.value = "Video call unavailable on recipient network — connected via voice"
+                }
+                false
+            }
         }
 
         _isVideoCall.value = activeVideo
@@ -238,12 +267,6 @@ object CallManager {
             if (activeVideo) {
                 val camId = if (_isFrontCamera.value) "1" else "0"
                 call.videoCall?.setCamera(camId)
-                if (!VideoProfile.isVideo(vState) && cState == Call.STATE_ACTIVE && pendingOutgoingVideoCall) {
-                    pendingOutgoingVideoCall = false
-                    call.videoCall?.sendSessionModifyRequest(
-                        VideoProfile(VideoProfile.STATE_BIDIRECTIONAL, VideoProfile.QUALITY_HIGH),
-                    )
-                }
             }
         } catch (_: Exception) {
         }
@@ -386,8 +409,10 @@ object CallManager {
     }
 
     private fun resetStates() {
-        pendingOutgoingVideoCall = false
+        requestedOutgoingVideo = false
         _isVideoCall.value = false
+        _canUpgradeToVideo.value = false
+        _videoDowngradedNotice.value = null
         isMuted.value = false
         isSpeaker.value = false
         isOnHold.value = false
@@ -446,6 +471,7 @@ class AetherInCallService : InCallService() {
         flipDetector = null
         incomingOverlayShowing = false
         IncomingCallOverlayService.stopOverlay(this)
+        CallRingtonePlayer.stop(this)
         try {
             stopForeground(STOP_FOREGROUND_REMOVE)
         } catch (_: Exception) {
@@ -542,7 +568,17 @@ class AetherInCallService : InCallService() {
             CallBridge.simLabel.value = simInfo.displayLabel
             CallManager.syncVideoCallState(call)
             @Suppress("DEPRECATION")
-            if (call.state != Call.STATE_DISCONNECTED && call.state != Call.STATE_DISCONNECTING) {
+            val state = call.state
+            if (incomingOverlayShowing && state == Call.STATE_RINGING) {
+                val isVideo = CallManager.isVideoCall.value || VideoProfile.isVideo(details.videoState)
+                if (isVideo) {
+                    incomingOverlayShowing = false
+                    IncomingCallOverlayService.stopOverlay(this@AetherInCallService)
+                    val number = details.handle?.schemeSpecificPart.orEmpty()
+                    launchFullScreenInCall(call, number)
+                }
+            }
+            if (state != Call.STATE_DISCONNECTED && state != Call.STATE_DISCONNECTING) {
                 updateAndResolveCaller(call)
             }
         }
@@ -582,6 +618,7 @@ class AetherInCallService : InCallService() {
                 Call.STATE_ACTIVE, Call.STATE_HOLDING -> {
                     val wasJustAnswered = !wasAnswered
                     wasAnswered = true
+                    CallRingtonePlayer.stop(this@AetherInCallService)
                     autoAnswerJob?.cancel()
                     autoAnswerJob = null
                     stopTts()
@@ -858,6 +895,7 @@ class AetherInCallService : InCallService() {
     ) {
         flipDetector?.stopListening()
         autoAnswerJob?.cancel()
+        CallRingtonePlayer.start(this)
         val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
         val isLocked = keyguardManager?.isKeyguardLocked == true
         val canDrawOverlay = Settings.canDrawOverlays(this)
@@ -929,24 +967,9 @@ class AetherInCallService : InCallService() {
         }
     }
 
-    @Suppress("MissingPermission")
     private fun silenceActiveCallRinger() {
         try {
-            val telecomManager = getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                try {
-                    telecomManager?.silenceRinger()
-                } catch (_: SecurityException) {
-                    val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-                    @Suppress("DEPRECATION")
-                    audioManager?.ringerMode = AudioManager.RINGER_MODE_SILENT
-                }
-            } else {
-                val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-                @Suppress("DEPRECATION")
-                audioManager?.ringerMode = AudioManager.RINGER_MODE_SILENT
-            }
-            triggerShortVibration()
+            CallRingtonePlayer.silence(this)
         } catch (e: Exception) {
             e.printStackTrace()
         }

@@ -4,7 +4,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
-import android.media.AudioManager
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
@@ -99,8 +98,15 @@ class IncomingCallOverlayService : Service(), LifecycleOwner, ViewModelStoreOwne
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
+        val displayMetrics = resources.displayMetrics
+        val cardWidth = minOf(
+            (displayMetrics.widthPixels * 0.92f).toInt(),
+            (420 * displayMetrics.density).toInt(),
+        )
+        val topOffsetPx = (12 * displayMetrics.density).toInt()
+
         val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
+            cardWidth,
             WindowManager.LayoutParams.WRAP_CONTENT,
             layoutType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -111,7 +117,7 @@ class IncomingCallOverlayService : Service(), LifecycleOwner, ViewModelStoreOwne
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            y = 24
+            y = topOffsetPx
         }
 
         val composeView = ComposeView(this).apply {
@@ -135,8 +141,6 @@ class IncomingCallOverlayService : Service(), LifecycleOwner, ViewModelStoreOwne
                     simLabel = simLabel,
                     posterPhotoUri = livePhoto,
                     onAnswer = {
-                        // Launch InCallActivity FIRST while overlay window is still visible on screen
-                        // so Android 14/15 allows the activity transition, then answer and close overlay
                         val fullIntent = Intent(this@IncomingCallOverlayService, InCallActivity::class.java).apply {
                             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                                 Intent.FLAG_ACTIVITY_SINGLE_TOP or
@@ -165,7 +169,7 @@ class IncomingCallOverlayService : Service(), LifecycleOwner, ViewModelStoreOwne
                         stopSelf()
                     },
                     onExpandFullScreen = {
-                        expandToFullScreen(effectiveNumber, effectiveName)
+                        expandToFullScreen()
                         stopSelf()
                     },
                     onSilence = {
@@ -184,30 +188,15 @@ class IncomingCallOverlayService : Service(), LifecycleOwner, ViewModelStoreOwne
         }
     }
 
-    private fun expandToFullScreen(number: String, name: String) {
-        val fullIntent = Intent(this, InCallActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-            putExtra("CALL_NUMBER", number)
-            putExtra("CALLER_NAME", name)
-            putExtra("CALL_DIRECTION", "INCOMING")
-        }
-        startActivity(fullIntent)
+    private fun expandToFullScreen() {
+        CallManager.instance?.bringInCallUiToForeground()
     }
 
-    @Suppress("MissingPermission")
     private fun silenceRinger() {
         try {
-            val tm = getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                tm?.silenceRinger()
-            }
-        } catch (_: Exception) {
-            try {
-                val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-                @Suppress("DEPRECATION")
-                am?.ringerMode = AudioManager.RINGER_MODE_SILENT
-            } catch (_: Exception) {
-            }
+            CallRingtonePlayer.silence(this)
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 

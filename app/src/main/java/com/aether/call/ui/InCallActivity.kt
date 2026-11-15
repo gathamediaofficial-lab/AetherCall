@@ -23,6 +23,7 @@ import android.util.Rational
 import android.view.KeyEvent
 import android.view.WindowManager
 import android.widget.Toast
+import com.aether.call.util.showToast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -234,10 +235,16 @@ class InCallActivity : ComponentActivity(), SensorEventListener {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP && CallBridge.callState.value == Call.STATE_RINGING) {
-            val settings = runBlocking { AppSettingsManager(this@InCallActivity).settingsFlow.first() }
-            if (settings.volumeUpToAnswer) {
-                CallBridge.answerCall()
+        if (CallBridge.callState.value == Call.STATE_RINGING) {
+            if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+                val settings = runBlocking { AppSettingsManager(this@InCallActivity).settingsFlow.first() }
+                if (settings.volumeUpToAnswer) {
+                    CallBridge.answerCall()
+                    return true
+                }
+            }
+            if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+                com.aether.call.telecom.CallRingtonePlayer.silence(this)
                 return true
             }
         }
@@ -368,6 +375,15 @@ fun InCallActivityContainer(
     val callerNameState by CallBridge.callerName.collectAsState()
     val callerNumberState by CallBridge.callerNumber.collectAsState()
     val callerPhotoUriState by CallBridge.callerPhotoUri.collectAsState()
+    val videoDowngradedNotice by CallManager.videoDowngradedNotice.collectAsState()
+
+    LaunchedEffect(videoDowngradedNotice) {
+        val notice = videoDowngradedNotice
+        if (!notice.isNullOrBlank()) {
+            context.showToast(notice, Toast.LENGTH_LONG)
+            CallManager.clearVideoDowngradedNotice()
+        }
+    }
 
     val rawHandle = currentCall?.details?.handle?.schemeSpecificPart.orEmpty()
     val handle = rawHandle.ifBlank { callerNumberState.ifBlank { fallbackIntentNumber } }
