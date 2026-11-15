@@ -37,14 +37,23 @@ object CallBridge {
         callerPhotoUri.value = photoUri
     }
 
-    fun answerCall() {
+    fun answerCall(asVideo: Boolean = CallManager.isVideoCall.value) {
         // 1. Immediately answer the Telecom call
         try {
-            CallManager.currentCall.value?.answer(VideoProfile.STATE_AUDIO_ONLY)
+            CallManager.answer(asVideo)
         } catch (_: Exception) {
-            CallManager.answer()
+            CallManager.answer(asVideo)
         }
         // 2. Immediately dismiss the incoming heads-up notification banner and bring UI to front
+        CallManager.instance?.onCallAnsweredByUser()
+    }
+
+    fun answerCallAsAudioOnly() {
+        try {
+            CallManager.answerAsAudioOnly()
+        } catch (_: Exception) {
+            CallManager.answerAsAudioOnly()
+        }
         CallManager.instance?.onCallAnsweredByUser()
     }
 

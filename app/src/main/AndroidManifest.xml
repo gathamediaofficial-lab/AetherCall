@@ -117,7 +117,6 @@
             <intent-filter>
                 <action android:name="android.intent.action.CALL_BUTTON" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
             </intent-filter>
         </activity>
 
@@ -125,9 +124,8 @@
         <activity
             android:name=".ui.InCallActivity"
             android:exported="true"
-            android:launchMode="singleInstance"
+            android:launchMode="singleTask"
             android:taskAffinity="com.aether.call.incall"
-            android:excludeFromRecents="true"
             android:showOnLockScreen="true"
             android:turnScreenOn="true"
             android:showWhenLocked="true"
@@ -142,17 +140,20 @@
             android:foregroundServiceType="phoneCall"
             android:directBootAware="true"
             android:exported="true">
-            <!-- Tells every OEM TelecomServer that Aether Call provides the full In-Call UI -->
             <meta-data
                 android:name="android.telecom.IN_CALL_SERVICE_UI"
                 android:value="true" />
-            <!-- Prevents OEM dialer from taking over on VoWiFi / IMS / External calls -->
+            <meta-data
+                android:name="android.telecom.IN_CALL_SERVICE_RINGING"
+                android:value="true" />
             <meta-data
                 android:name="android.telecom.INCLUDE_EXTERNAL_CALLS"
                 android:value="true" />
-            <!-- Prevents OEM dialer from taking over when a Bluetooth headset or car kit is connected -->
             <meta-data
                 android:name="android.telecom.IN_CALL_SERVICE_CAR_MODE_UI"
+                android:value="false" />
+            <meta-data
+                android:name="android.telecom.INCLUDE_SELF_MANAGED_CALLS"
                 android:value="false" />
             <intent-filter>
                 <action android:name="android.telecom.InCallService" />
@@ -163,6 +164,7 @@
         <service
             android:name=".telecom.AetherCallScreeningService"
             android:permission="android.permission.BIND_SCREENING_SERVICE"
+            tools:targetApi="29"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.telecom.CallScreeningService" />

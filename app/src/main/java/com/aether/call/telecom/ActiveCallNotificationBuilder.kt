@@ -1,5 +1,6 @@
 package com.aether.call.telecom
 
+import android.app.ActivityOptions
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.Person
@@ -17,19 +18,38 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.telecom.Call
+import android.util.LruCache
 import androidx.core.app.NotificationCompat
 import com.aether.call.ui.InCallActivity
 
 object ActiveCallNotificationBuilder {
 
+    private val avatarCache = object : LruCache<String, Bitmap>(16) {}
+
+    private fun backgroundActivityAllowBundle(): android.os.Bundle? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            ActivityOptions.makeBasic().apply {
+                pendingIntentBackgroundActivityStartMode =
+                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+            }.toBundle()
+        } else {
+            null
+        }
+    }
+
     fun loadCallerAvatarBitmap(context: Context, caller: ResolvedCaller): Bitmap {
+        val cacheKey = "${caller.rawNumber}_${caller.photoUri.orEmpty()}_${caller.displayName}"
+        avatarCache.get(cacheKey)?.let { return it }
+
         val size = 192
         if (!caller.photoUri.isNullOrBlank()) {
             try {
                 @Suppress("DEPRECATION")
                 val src = MediaStore.Images.Media.getBitmap(context.contentResolver, Uri.parse(caller.photoUri))
                 if (src != null) {
-                    return cropCircleBitmap(Bitmap.createScaledBitmap(src, size, size, true))
+                    val cropped = cropCircleBitmap(Bitmap.createScaledBitmap(src, size, size, true))
+                    avatarCache.put(cacheKey, cropped)
+                    return cropped
                 }
             } catch (_: Exception) {
             }
@@ -51,6 +71,7 @@ object ActiveCallNotificationBuilder {
         }
         val textY = (size / 2f) - ((textPaint.descent() + textPaint.ascent()) / 2f)
         canvas.drawText(initial, size / 2f, textY, textPaint)
+        avatarCache.put(cacheKey, bmp)
         return bmp
     }
 
@@ -72,8 +93,13 @@ object ActiveCallNotificationBuilder {
         channelId: String,
         attachFullScreenIntent: Boolean = true,
     ): Notification {
+        val balBundle = backgroundActivityAllowBundle()
+
         val fullScreenIntent = Intent(context, InCallActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                    Intent.FLAG_ACTIVITY_NO_USER_ACTION
             putExtra("CALL_NUMBER", caller.rawNumber)
             putExtra("CALLER_NAME", caller.displayName)
             putExtra("CALL_DIRECTION", "INCOMING")
@@ -83,18 +109,16 @@ object ActiveCallNotificationBuilder {
             100,
             fullScreenIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            balBundle,
         )
 
-        // Direct Activity PendingIntent for Answer — guarantees Android 14/15 / One UI 6/7
-        // opens Aether Call's InCallActivity immediately without background launch restrictions!
         val answerActivityIntent = Intent(context, InCallActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
             putExtra("CALL_NUMBER", caller.rawNumber)
             putExtra("CALLER_NAME", caller.displayName)
-            putExtra("CALL_DIRECTION", "INCOMING")
+            putExtra("CALL_DIRECTION", "ACTIVE")
             putExtra("AUTO_ANSWER_CALL", true)
         }
         val answerPi = PendingIntent.getActivity(
@@ -102,6 +126,7 @@ object ActiveCallNotificationBuilder {
             101,
             answerActivityIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            balBundle,
         )
 
         val declinePi = PendingIntent.getBroadcast(
@@ -129,14 +154,17 @@ object ActiveCallNotificationBuilder {
 
             val builder = Notification.Builder(context, channelId)
                 .setSmallIcon(android.R.drawable.sym_call_incoming)
-                .setContentTitle(caller.displayName)
+                .setContentTitle(caller.displayName.ifBlank { caller.rawNumber.ifBlank { "Unknown Caller" } })
                 .setContentText(subtitle)
                 .setColor(Color.parseColor("#10B981"))
                 .setCategory(Notification.CATEGORY_CALL)
                 .setStyle(callStyle)
                 .setOngoing(true)
                 .setAutoCancel(false)
+                .setOnlyAlertOnce(true)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .setDefaults(0)
+                .setSound(null, null)
                 .setContentIntent(fullScreenPi)
 
             if (attachFullScreenIntent) {
@@ -151,11 +179,15 @@ object ActiveCallNotificationBuilder {
             .setContentTitle(caller.displayName.ifBlank { caller.rawNumber.ifBlank { "Unknown Caller" } })
             .setContentText(subtitle)
             .setColor(Color.parseColor("#10B981"))
-            .setPriority(if (attachFullScreenIntent) NotificationCompat.PRIORITY_MAX else NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(true)
             .setAutoCancel(false)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setDefaults(0)
+            .setSound(null)
             .setContentIntent(fullScreenPi)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Decline", declinePi)
             .addAction(android.R.drawable.sym_action_call, "Answer", answerPi)
@@ -172,16 +204,22 @@ object ActiveCallNotificationBuilder {
         caller: ResolvedCaller,
         channelId: String,
     ): Notification {
+        val balBundle = backgroundActivityAllowBundle()
+
         val openInCallIntent = Intent(context, InCallActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
             putExtra("CALL_NUMBER", caller.rawNumber)
             putExtra("CALLER_NAME", caller.displayName)
+            putExtra("CALL_DIRECTION", "ACTIVE")
         }
         val contentPi = PendingIntent.getActivity(
             context,
             200,
             openInCallIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            balBundle,
         )
 
         val hangupPi = PendingIntent.getBroadcast(
@@ -233,21 +271,22 @@ object ActiveCallNotificationBuilder {
                 .setImportant(true)
                 .build()
 
-            // Use clean CallStyle with Hang Up pill (avoids One UI's blank white icon-only pills)
-            // and provide dark accent color so all One UI pill text/icons render with high contrast
             val callStyle = Notification.CallStyle.forOngoingCall(person, hangupPi)
 
             val builder = Notification.Builder(context, channelId)
                 .setSmallIcon(android.R.drawable.sym_action_call)
-                .setContentTitle(caller.displayName)
+                .setContentTitle(caller.displayName.ifBlank { caller.rawNumber.ifBlank { "Active Call" } })
                 .setContentText(statusText)
                 .setColor(Color.parseColor("#10B981"))
                 .setCategory(Notification.CATEGORY_CALL)
                 .setStyle(callStyle)
                 .setOngoing(true)
+                .setAutoCancel(false)
+                .setOnlyAlertOnce(true)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .setDefaults(0)
+                .setSound(null, null)
                 .setContentIntent(contentPi)
-                .setFullScreenIntent(contentPi, false)
 
             if (isActive && connectTimeMillis > 0L) {
                 builder.setUsesChronometer(true)
@@ -262,9 +301,14 @@ object ActiveCallNotificationBuilder {
             .setContentTitle(caller.displayName.ifBlank { caller.rawNumber.ifBlank { "Active Call" } })
             .setContentText(statusText)
             .setColor(Color.parseColor("#10B981"))
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setOngoing(true)
+            .setAutoCancel(false)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setDefaults(0)
+            .setSound(null)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(contentPi)
             .addAction(0, if (isMuted) "Unmute" else "Mute", mutePi)

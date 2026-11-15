@@ -64,6 +64,7 @@ enum class NavigationTab {
 data class CallTarget(
     val number: String,
     val contactName: String? = null,
+    val isVideo: Boolean = false,
 )
 
 class DialerViewModel : ViewModel() {
@@ -121,7 +122,7 @@ class DialerViewModel : ViewModel() {
                 type = record.type,
                 dateMillis = record.date,
                 durationSeconds = record.duration,
-                simDisplayName = "IND-JIO",
+                simDisplayName = record.simDisplayName,
                 repeatCount = 1,
                 isWifiCall = true,
             )
@@ -960,6 +961,7 @@ class DialerViewModel : ViewModel() {
         context: Context,
         number: String = _enteredNumber.value,
         preferredSlot: Int? = null,
+        isVideo: Boolean = false,
     ) {
         if (number.isBlank()) return
         _enteredNumber.value = ""
@@ -976,24 +978,31 @@ class DialerViewModel : ViewModel() {
             activeSims.value = sims
             activeSimList.value = sims
 
-            val slotPref = preferredSlot ?: AetherDatabase.getDatabase(context).simPreferenceDao().getPreferredSlot(targetNumber)
-            val defaultSlot = userSettings.value.defaultSimSlot
+            val askEveryTime = com.aether.call.util.SimAccountResolver.shouldAskSimEveryTime(context)
+            val slotPref = if (!askEveryTime) {
+                preferredSlot ?: AetherDatabase.getDatabase(context).simPreferenceDao().getPreferredSlot(targetNumber)
+            } else {
+                preferredSlot
+            }
+            val defaultSlot = if (!askEveryTime) userSettings.value.defaultSimSlot else -1
 
             if (sims.size <= 1) {
                 val targetSim = sims.firstOrNull()
-                if (targetSim?.phoneAccountHandle != null) {
-                    SimManager.makeCallWithSim(context, targetNumber, targetSim.phoneAccountHandle)
-                } else {
-                    CallLogRepository.placeCarrierCall(context, targetNumber)
-                }
+                val handle = targetSim?.phoneAccountHandle
+                    ?: com.aether.call.util.SimAccountResolver.findPhoneAccountHandleForSlot(context, targetSim?.slotIndex ?: 0)
+                CallLogRepository.placeCarrierCall(context, targetNumber, isVideo = isVideo, preferredAccountHandle = handle)
             } else {
                 val targetSlot = slotPref ?: if (defaultSlot in 0..1) defaultSlot else null
                 val matchingSim = if (targetSlot != null) {
                     sims.find { it.slotIndex == targetSlot || it.slotIndex == (targetSlot - 1) }
                 } else null
 
-                if (matchingSim?.phoneAccountHandle != null) {
-                    SimManager.makeCallWithSim(context, targetNumber, matchingSim.phoneAccountHandle)
+                if (matchingSim != null) {
+                    val handle = matchingSim.phoneAccountHandle
+                        ?: com.aether.call.util.SimAccountResolver.findPhoneAccountHandleForSlot(context, matchingSim.slotIndex)
+                    val carrierName = matchingSim.carrierName.ifBlank { "SIM" }
+                    com.aether.call.telecom.CallBridge.simLabel.value = "SIM ${matchingSim.slotIndex + 1} • $carrierName"
+                    CallLogRepository.placeCarrierCall(context, targetNumber, isVideo = isVideo, preferredAccountHandle = handle)
                 } else {
                     val targetNorm = PhoneNormalizer.normalizeDigits(targetNumber)
                     val matchingContact = contactsList.value.find { c ->
@@ -1002,6 +1011,7 @@ class DialerViewModel : ViewModel() {
                     simSelectionDialog.value = CallTarget(
                         number = targetNumber,
                         contactName = matchingContact?.displayName,
+                        isVideo = isVideo,
                     )
                 }
             }
@@ -1012,6 +1022,7 @@ class DialerViewModel : ViewModel() {
         context: Context,
         targetNumber: String,
         slotIndex: Int,
+        isVideo: Boolean = simSelectionDialog.value?.isVideo == true,
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             val prefDao = AetherDatabase.getDatabase(context).simPreferenceDao()
@@ -1029,11 +1040,12 @@ class DialerViewModel : ViewModel() {
 
             simSelectionDialog.value = null
 
-            if (selectedSim?.phoneAccountHandle != null) {
-                SimManager.makeCallWithSim(context, targetNumber, selectedSim.phoneAccountHandle)
-            } else {
-                CallLogRepository.placeCarrierCall(context, targetNumber)
-            }
+            val handle = selectedSim?.phoneAccountHandle
+                ?: com.aether.call.util.SimAccountResolver.findPhoneAccountHandleForSlot(context, slotIndex)
+            val carrierName = selectedSim?.carrierName?.ifBlank { "SIM" } ?: "SIM"
+            com.aether.call.telecom.CallBridge.simLabel.value = "SIM ${slotIndex + 1} • $carrierName"
+
+            CallLogRepository.placeCarrierCall(context, targetNumber, isVideo = isVideo, preferredAccountHandle = handle)
         }
     }
 

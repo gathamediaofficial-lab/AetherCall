@@ -134,8 +134,15 @@ fun OneUiSettingsScreen(
     }
 
     if (activeSubPage == SettingsSubPage.ABOUT) {
+        val dynamicVersion = remember(context) {
+            try {
+                context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.1"
+            } catch (_: Exception) {
+                "1.0.1"
+            }
+        }
         AboutSettingsScreen(
-            appVersionName = "1.0.0",
+            appVersionName = dynamicVersion,
             onBack = { activeSubPage = null },
         )
     } else if (activeSubPage != null) {

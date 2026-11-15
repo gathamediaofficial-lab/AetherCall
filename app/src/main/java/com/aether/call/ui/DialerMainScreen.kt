@@ -209,7 +209,10 @@ fun DialerMainScreen(
                         if (num.isNotBlank()) viewModel.launchSms(context, num)
                     },
                     onVideoCallClick = { num ->
-                        if (num.isNotBlank()) viewModel.placeOutgoingCall(context, num)
+                        if (num.isNotBlank()) {
+                            com.aether.call.data.CallLogRepository.placeCarrierVideoCall(context, num)
+                        }
+                        isMyProfileCardOpen = false
                     },
                     onToggleStar = {},
                     onEditClick = {
@@ -246,15 +249,10 @@ fun DialerMainScreen(
                         viewModel.launchSms(context, num)
                     },
                     onVideoCallClick = { num ->
-                        try {
-                            val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$num")).apply {
-                                putExtra(TelecomManager.EXTRA_START_CALL_WITH_VIDEO_STATE, VideoProfile.STATE_BIDIRECTIONAL)
-                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                            }
-                            context.startActivity(intent)
-                        } catch (_: Exception) {
-                            viewModel.placeOutgoingCall(context, num)
+                        if (num.isNotBlank()) {
+                            com.aether.call.data.CallLogRepository.placeCarrierVideoCall(context, num)
                         }
+                        selectedContactForDetails = null
                     },
                     onToggleStar = { target ->
                         val toggled = target.copy(isStarred = !target.isStarred)
@@ -314,8 +312,15 @@ fun DialerMainScreen(
 
             // ROUTE 2.5: ABOUT AETHER CALL
             showAboutScreen -> {
+                val dynamicVersion = remember(context) {
+                    try {
+                        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.1"
+                    } catch (_: Exception) {
+                        "1.0.1"
+                    }
+                }
                 AboutSettingsScreen(
-                    appVersionName = "1.0.0",
+                    appVersionName = dynamicVersion,
                     onBack = { showAboutScreen = false },
                 )
             }
@@ -430,12 +435,19 @@ fun DialerMainScreen(
                         )
                     },
                 ) { innerPadding ->
-                    Box(
+                    Column(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(innerPadding),
                     ) {
-                        when (currentTab) {
+                        PermissionSetupBannerOrSheet()
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                        ) {
+                            when (currentTab) {
                             NavigationTab.KEYPAD -> {
                                 OneUiKeypadScreen(
                                     enteredNumber = enteredNumber,
@@ -495,7 +507,6 @@ fun DialerMainScreen(
                     }
                 }
             }
-        }
 
         // Full Multi-Field Contact Create / Edit Sheet
         if (isCreatingContact || contactBeingEdited != null) {
@@ -677,4 +688,6 @@ fun DialerMainScreen(
             )
         }
     }
+}
+}
 }

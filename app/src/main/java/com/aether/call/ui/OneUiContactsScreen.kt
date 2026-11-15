@@ -139,16 +139,41 @@ fun OneUiContactsScreen(
         }
     }
 
+    var pendingVideoNumber by remember { mutableStateOf<String?>(null) }
+    val videoPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { perms ->
+        val target = pendingVideoNumber
+        pendingVideoNumber = null
+        if (perms[android.Manifest.permission.CALL_PHONE] == true &&
+            perms[android.Manifest.permission.CAMERA] == true &&
+            !target.isNullOrBlank()
+        ) {
+            com.aether.call.data.CallLogRepository.placeCarrierVideoCall(context, target)
+        }
+    }
+
     val handleVideoCall: (String) -> Unit = { number ->
-        if (number.isNotBlank()) {
-            try {
-                val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$number")).apply {
-                    putExtra(TelecomManager.EXTRA_START_CALL_WITH_VIDEO_STATE, VideoProfile.STATE_BIDIRECTIONAL)
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-                context.startActivity(intent)
-            } catch (_: Exception) {
-                onCallContact(number)
+        val clean = number.trim()
+        if (clean.isNotBlank()) {
+            val hasCall = androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.CALL_PHONE
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            val hasCam = androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.CAMERA
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+            if (!hasCall || !hasCam) {
+                pendingVideoNumber = clean
+                videoPermissionLauncher.launch(
+                    arrayOf(
+                        android.Manifest.permission.CALL_PHONE,
+                        android.Manifest.permission.CAMERA,
+                        android.Manifest.permission.RECORD_AUDIO,
+                    )
+                )
+            } else {
+                com.aether.call.data.CallLogRepository.placeCarrierVideoCall(context, clean)
             }
         }
     }
@@ -600,9 +625,16 @@ private fun OneUiExpandableContactRow(
 ) {
     val context = LocalContext.current
     val initial = getContactInitial(contact)
+    val effectiveNumber = remember(contact) {
+        contact.number.ifBlank {
+            contact.primaryNumber.ifBlank {
+                contact.phones.firstOrNull { it.value.isNotBlank() }?.value.orEmpty()
+            }
+        }
+    }
 
     OneUiSwipeActionRow(
-        phoneNumber = contact.number,
+        phoneNumber = effectiveNumber,
         onSwipeCall = onCallClick,
         onSwipeMessage = onMessageClick,
     ) {
@@ -656,9 +688,9 @@ private fun OneUiExpandableContactRow(
                         overflow = TextOverflow.Ellipsis,
                     )
 
-                    if (showSubtitleInCollapsed && contact.number.isNotBlank()) {
+                    if (showSubtitleInCollapsed && effectiveNumber.isNotBlank()) {
                         Text(
-                            text = buildHighlightedText(contact.number, searchQuery),
+                            text = buildHighlightedText(effectiveNumber, searchQuery),
                             fontSize = 13.sp,
                             color = Color(0xFF9E9E9E),
                             modifier = Modifier.padding(top = 2.dp),
@@ -678,7 +710,7 @@ private fun OneUiExpandableContactRow(
                         .fillMaxWidth()
                         .padding(top = 10.dp, bottom = 4.dp),
                 ) {
-                    if (contact.number.isNotBlank()) {
+                    if (effectiveNumber.isNotBlank()) {
                         Row(
                             modifier = Modifier
                                 .padding(start = 54.dp, bottom = 14.dp)
@@ -692,7 +724,7 @@ private fun OneUiExpandableContactRow(
                                 color = Color(0xFF10B981),
                             )
                             Text(
-                                text = "${contact.number} >",
+                                text = "$effectiveNumber >",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color(0xFF10B981),
@@ -709,7 +741,7 @@ private fun OneUiExpandableContactRow(
                     ) {
                         // 1. Green Call Circle
                         Surface(
-                            onClick = { onCallClick(contact.number) },
+                            onClick = { onCallClick(effectiveNumber) },
                             shape = CircleShape,
                             color = Color(0xFF10B981),
                             modifier = Modifier.size(44.dp),
@@ -721,7 +753,7 @@ private fun OneUiExpandableContactRow(
 
                         // 2. Blue SMS Circle
                         Surface(
-                            onClick = { onMessageClick(contact.number) },
+                            onClick = { onMessageClick(effectiveNumber) },
                             shape = CircleShape,
                             color = Color(0xFF38BDF8),
                             modifier = Modifier.size(44.dp),
@@ -733,7 +765,7 @@ private fun OneUiExpandableContactRow(
 
                         // 3. Green Video Call Circle
                         Surface(
-                            onClick = { onVideoClick(contact.number) },
+                            onClick = { onVideoClick(effectiveNumber) },
                             shape = CircleShape,
                             color = Color(0xFF10B981),
                             modifier = Modifier.size(44.dp),

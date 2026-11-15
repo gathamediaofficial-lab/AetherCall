@@ -27,25 +27,27 @@ import com.aether.call.ui.DefaultDialerPromptScreen
 import com.aether.call.ui.DialerMainScreen
 import com.aether.call.ui.DialerViewModel
 
-/**
- * Main Activity for Aether Call hosting the Samsung One UI Jetpack Compose interface
- * with unified runtime & special-access permission request handling.
- */
 class MainActivity : ComponentActivity() {
 
     private val viewModel: DialerViewModel by viewModels()
 
+    private val fullScreenIntentLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { _ ->
+        checkOverlayPermission()
+    }
+
     private val overlayLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { _ ->
-        // Return from overlay permission settings
+        // Completed special permissions flow
     }
 
     private val roleLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { _ ->
         viewModel.checkRoleStatus(this)
-        checkSpecialPermissions()
+        requestAppPermissions()
     }
 
     private val permissionLauncher = registerForActivityResult(
@@ -53,7 +55,7 @@ class MainActivity : ComponentActivity() {
     ) { _ ->
         viewModel.loadContacts(this)
         viewModel.loadRecentCalls(this)
-        checkSpecialPermissions()
+        checkFullScreenIntentPermission()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -63,9 +65,14 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.BLACK),
         )
 
-        ensureDefaultDialerAndFullScreenPermission(this)
         viewModel.checkRoleStatus(this)
-        requestAppPermissions()
+
+        // Step 1: Request Default Dialer Role first if not held; otherwise request runtime permissions
+        if (!isHoldingDialerRole()) {
+            launchSetDefaultDialer()
+        } else {
+            requestAppPermissions()
+        }
 
         setContent {
             val isDefault by viewModel.isDefaultDialer.collectAsState()
@@ -91,16 +98,29 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.checkRoleStatus(this)
-        if (hasRequiredPermissions()) {
+        if (hasCoreContactsAndCallLogPermissions()) {
             viewModel.loadContacts(this)
             viewModel.loadRecentCalls(this)
+        }
+    }
+
+    private fun isHoldingDialerRole(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val roleManager = getSystemService(RoleManager::class.java)
+            roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_DIALER) && roleManager.isRoleHeld(RoleManager.ROLE_DIALER)
+        } else {
+            val tm = getSystemService(TELECOM_SERVICE) as? TelecomManager
+            tm?.defaultDialerPackage == packageName
         }
     }
 
     fun launchSetDefaultDialer() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val roleManager = getSystemService(RoleManager::class.java)
-            if (roleManager != null && !roleManager.isRoleHeld(RoleManager.ROLE_DIALER)) {
+            if (roleManager != null &&
+                roleManager.isRoleAvailable(RoleManager.ROLE_DIALER) &&
+                !roleManager.isRoleHeld(RoleManager.ROLE_DIALER)
+            ) {
                 val intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_DIALER)
                 roleLauncher.launch(intent)
             }
@@ -113,18 +133,25 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun checkSpecialPermissions() {
-        // 1. Default Dialer Role Check
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val roleManager = getSystemService(RoleManager::class.java)
-            if (roleManager != null && !roleManager.isRoleHeld(RoleManager.ROLE_DIALER)) {
-                val intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_DIALER)
-                roleLauncher.launch(intent)
-                return
+    private fun checkFullScreenIntentPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val nm = getSystemService(NotificationManager::class.java)
+            if (nm != null && !nm.canUseFullScreenIntent()) {
+                try {
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                        Uri.parse("package:$packageName"),
+                    )
+                    fullScreenIntentLauncher.launch(intent)
+                    return
+                } catch (_: Exception) {
+                }
             }
         }
+        checkOverlayPermission()
+    }
 
-        // 2. Display Over Other Apps (Overlay) Check
+    private fun checkOverlayPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
             try {
                 val intent = Intent(
@@ -150,31 +177,18 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.SEND_SMS,
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.CAMERA,
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION,
         )
 
-        // Android 12+ (API 31+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
-            permissions.add(Manifest.permission.BLUETOOTH_SCAN)
         }
 
-        // Android 13+ (API 33+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
-            permissions.add(Manifest.permission.NEARBY_WIFI_DEVICES)
             permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
-            permissions.add(Manifest.permission.READ_MEDIA_VIDEO)
             permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
         }
 
-        // Android 14+ (API 34+)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            permissions.add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
-        }
-
-        // Android 12L and below (API <= 32)
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
             @Suppress("DEPRECATION")
             permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -183,11 +197,9 @@ class MainActivity : ComponentActivity() {
         return permissions
     }
 
-    private fun hasRequiredPermissions(): Boolean {
-        val required = buildVersionAwarePermissionsList()
-        return required.all {
-            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
-        }
+    private fun hasCoreContactsAndCallLogPermissions(): Boolean {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun requestAppPermissions() {
@@ -201,31 +213,7 @@ class MainActivity : ComponentActivity() {
         } else {
             viewModel.loadContacts(this)
             viewModel.loadRecentCalls(this)
-            checkSpecialPermissions()
-        }
-    }
-}
-
-fun ensureDefaultDialerAndFullScreenPermission(activity: ComponentActivity) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        val roleManager = activity.getSystemService(RoleManager::class.java)
-        if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_DIALER)) {
-            if (!roleManager.isRoleHeld(RoleManager.ROLE_DIALER)) {
-                val intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_DIALER)
-                @Suppress("DEPRECATION")
-                activity.startActivityForResult(intent, 1001)
-            }
-        }
-    }
-
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-        val nm = activity.getSystemService(NotificationManager::class.java)
-        if (nm != null && !nm.canUseFullScreenIntent()) {
-            val intent = Intent(
-                Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
-                Uri.parse("package:${activity.packageName}"),
-            )
-            activity.startActivity(intent)
+            checkFullScreenIntentPermission()
         }
     }
 }

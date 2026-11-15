@@ -290,7 +290,7 @@ fun OneUiContactCardScreen(
     onBack: () -> Unit,
     onCallClick: (String) -> Unit,
     onMessageClick: (String) -> Unit,
-    onVideoCallClick: (String) -> Unit,
+    onVideoCallClick: ((String) -> Unit)? = null,
     onToggleStar: (ContactItem) -> Unit,
     onEditClick: (ContactItem) -> Unit,
     onShareClick: (ContactItem) -> Unit = {},
@@ -300,6 +300,49 @@ fun OneUiContactCardScreen(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val coroutineScope = rememberCoroutineScope()
+
+    var pendingVideoNumber by remember { mutableStateOf<String?>(null) }
+
+    val videoPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val callGranted = permissions[android.Manifest.permission.CALL_PHONE] == true
+        val cameraGranted = permissions[android.Manifest.permission.CAMERA] == true
+        val targetNum = pendingVideoNumber
+        pendingVideoNumber = null
+        if (callGranted && cameraGranted && !targetNum.isNullOrBlank()) {
+            com.aether.call.data.CallLogRepository.placeCarrierVideoCall(context, targetNum)
+        } else if (!targetNum.isNullOrBlank()) {
+            Toast.makeText(context, "Camera and Phone permissions are required for Video Calls", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val triggerVideoCall: (String) -> Unit = { rawNumber ->
+        val clean = rawNumber.trim()
+        if (clean.isNotBlank()) {
+            val hasCall = androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.CALL_PHONE
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            val hasCam = androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.CAMERA
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+            if (!hasCall || !hasCam) {
+                pendingVideoNumber = clean
+                videoPermissionLauncher.launch(
+                    arrayOf(
+                        android.Manifest.permission.CALL_PHONE,
+                        android.Manifest.permission.CAMERA,
+                        android.Manifest.permission.RECORD_AUDIO,
+                    )
+                )
+            } else {
+                // Always invoke placeCarrierVideoCall so the button works even if parent passed an empty lambda
+                com.aether.call.data.CallLogRepository.placeCarrierVideoCall(context, clean)
+                onVideoCallClick?.invoke(clean)
+            }
+        }
+    }
 
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showQrSheet by remember { mutableStateOf(false) }
@@ -331,6 +374,8 @@ fun OneUiContactCardScreen(
     }
 
     val primaryPhone = orderedPhones.firstOrNull()
+    val primaryNumberString = primaryPhone?.value?.takeIf { it.isNotBlank() }
+        ?: contact.primaryNumber.ifBlank { contact.number }
     val secondaryPhones = if (orderedPhones.size > 1) orderedPhones.drop(1) else emptyList()
 
     Scaffold(
@@ -543,14 +588,14 @@ fun OneUiContactCardScreen(
                             }
                         }
 
-                        if (primaryPhone != null && primaryPhone.value.isNotBlank()) {
+                        if (primaryNumberString.isNotBlank()) {
                             Spacer(modifier = Modifier.height(22.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceEvenly,
                             ) {
                                 Surface(
-                                    onClick = { onCallClick(primaryPhone.value) },
+                                    onClick = { onCallClick(primaryNumberString) },
                                     shape = CircleShape,
                                     color = Color(0xFF10B981),
                                     modifier = Modifier.size(46.dp),
@@ -561,7 +606,7 @@ fun OneUiContactCardScreen(
                                 }
 
                                 Surface(
-                                    onClick = { onMessageClick(primaryPhone.value) },
+                                    onClick = { onMessageClick(primaryNumberString) },
                                     shape = CircleShape,
                                     color = Color(0xFF38BDF8),
                                     modifier = Modifier.size(46.dp),
@@ -572,7 +617,7 @@ fun OneUiContactCardScreen(
                                 }
 
                                 Surface(
-                                    onClick = { onVideoCallClick(primaryPhone.value) },
+                                    onClick = { triggerVideoCall(primaryNumberString) },
                                     shape = CircleShape,
                                     color = Color(0xFF10B981),
                                     modifier = Modifier.size(46.dp),
@@ -625,7 +670,7 @@ fun OneUiContactCardScreen(
                                 IconButton(onClick = { onMessageClick(phone.value) }) {
                                     Icon(Icons.Default.ChatBubble, contentDescription = "SMS", tint = Color(0xFF38BDF8), modifier = Modifier.size(20.dp))
                                 }
-                                IconButton(onClick = { onVideoCallClick(phone.value) }) {
+                                IconButton(onClick = { triggerVideoCall(phone.value) }) {
                                     Icon(Icons.Default.Videocam, contentDescription = "Video", tint = Color(0xFF10B981), modifier = Modifier.size(22.dp))
                                 }
                             }

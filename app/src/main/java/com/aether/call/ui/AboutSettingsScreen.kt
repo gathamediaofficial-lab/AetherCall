@@ -59,11 +59,18 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AboutSettingsScreen(
-    appVersionName: String = "1.0.0",
+    appVersionName: String? = null,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val resolvedVersion = remember(context, appVersionName) {
+        appVersionName?.takeIf { it.isNotBlank() } ?: try {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.1"
+        } catch (_: Exception) {
+            "1.0.1"
+        }
+    }
     val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
 
@@ -164,7 +171,7 @@ fun AboutSettingsScreen(
                             color = Color(0xFF2A2D35),
                         ) {
                             Text(
-                                text = "Version $appVersionName (Stable)",
+                                text = "Version $resolvedVersion (Stable)",
                                 color = Color(0xFF6EE7B7),
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
@@ -283,7 +290,7 @@ fun AboutSettingsScreen(
                                         if (!isCheckingUpdate) {
                                             isCheckingUpdate = true
                                             coroutineScope.launch {
-                                                val result = GitHubUpdateChecker.checkForUpdates(context, appVersionName)
+                                                val result = GitHubUpdateChecker.checkForUpdates(context, resolvedVersion)
                                                 isCheckingUpdate = false
                                                 if (result != null) {
                                                     updateResultDialog = result

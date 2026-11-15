@@ -11,13 +11,16 @@ import android.media.ToneGenerator
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import android.telecom.Call
 import android.telecom.CallAudioState
 import android.telecom.DisconnectCause
 import android.telecom.InCallService
+import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
 import android.telecom.VideoProfile
+import android.util.Log
 import com.aether.call.data.AppSettingsManager
 import com.aether.call.ui.InCallActivity
 import com.aether.call.util.PhoneNormalizer
@@ -32,6 +35,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+private const val ICS_TAG = "AetherICS"
 
 object CallManager {
 
@@ -57,8 +63,20 @@ object CallManager {
     private val managerScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var timerJob: Job? = null
 
-    fun answer() {
+    fun answer(asVideo: Boolean = isVideoCall.value) {
+        val call = _currentCall.value ?: return
+        val incomingVideoState = call.details?.videoState ?: VideoProfile.STATE_AUDIO_ONLY
+        val targetVideoState = if (asVideo && VideoProfile.isVideo(incomingVideoState)) {
+            VideoProfile.STATE_BIDIRECTIONAL
+        } else {
+            VideoProfile.STATE_AUDIO_ONLY
+        }
+        call.answer(targetVideoState)
+    }
+
+    fun answerAsAudioOnly() {
         _currentCall.value?.answer(VideoProfile.STATE_AUDIO_ONLY)
+        _isVideoCall.value = false
     }
 
     fun hangup() {
@@ -129,6 +147,14 @@ object CallManager {
     private val _isVideoCall = MutableStateFlow(false)
     val isVideoCall: StateFlow<Boolean> = _isVideoCall.asStateFlow()
 
+    private var pendingOutgoingVideoCall = false
+
+    fun prepareOutgoingVideoCall() {
+        pendingOutgoingVideoCall = true
+        _isVideoCall.value = true
+        _isFrontCamera.value = true
+    }
+
     private val _incomingVideoUpgradeRequest = MutableStateFlow(false)
     val incomingVideoUpgradeRequest: StateFlow<Boolean> = _incomingVideoUpgradeRequest.asStateFlow()
 
@@ -174,32 +200,55 @@ object CallManager {
         ) {}
     }
 
-    /**
-     * Call this inside your Call.Callback.onDetailsChanged() and when attaching a new call.
-     */
     fun syncVideoCallState(call: Call?) {
         if (call == null) {
+            pendingOutgoingVideoCall = false
             _isVideoCall.value = false
             _incomingVideoUpgradeRequest.value = false
             return
         }
+
         val vState = call.details?.videoState ?: VideoProfile.STATE_AUDIO_ONLY
-        val activeVideo = VideoProfile.isVideo(vState)
+        @Suppress("DEPRECATION")
+        val cState = call.state
+
+        val activeVideo = when {
+            VideoProfile.isVideo(vState) -> {
+                pendingOutgoingVideoCall = false
+                true
+            }
+            pendingOutgoingVideoCall && (
+                    cState == Call.STATE_DIALING ||
+                            cState == Call.STATE_CONNECTING ||
+                            cState == Call.STATE_SELECT_PHONE_ACCOUNT ||
+                            cState == Call.STATE_NEW
+                    ) -> {
+                true
+            }
+            else -> false
+        }
+
         _isVideoCall.value = activeVideo
+        if (activeVideo && !isSpeaker.value) {
+            setSpeakerphone(true)
+        }
 
         try {
             call.videoCall?.registerCallback(videoCallCallback)
             if (activeVideo) {
                 val camId = if (_isFrontCamera.value) "1" else "0"
                 call.videoCall?.setCamera(camId)
+                if (!VideoProfile.isVideo(vState) && cState == Call.STATE_ACTIVE && pendingOutgoingVideoCall) {
+                    pendingOutgoingVideoCall = false
+                    call.videoCall?.sendSessionModifyRequest(
+                        VideoProfile(VideoProfile.STATE_BIDIRECTIONAL, VideoProfile.QUALITY_HIGH),
+                    )
+                }
             }
         } catch (_: Exception) {
         }
     }
 
-    /**
-     * Toggles between Carrier HD Video (STATE_BIDIRECTIONAL) and Voice-Only (STATE_AUDIO_ONLY).
-     */
     fun toggleVideoCall() {
         val call = _currentCall.value ?: return
         val videoCall = call.videoCall
@@ -207,6 +256,7 @@ object CallManager {
 
         if (!currentlyVideo) {
             _isVideoCall.value = true
+            setSpeakerphone(true)
             try {
                 val camId = if (_isFrontCamera.value) "1" else "0"
                 videoCall?.setCamera(camId)
@@ -232,14 +282,12 @@ object CallManager {
         }
     }
 
-    /**
-     * Accepts or declines an incoming request from the other caller to switch to video.
-     */
     fun respondToVideoUpgradeRequest(accept: Boolean) {
         val call = _currentCall.value ?: return
         _incomingVideoUpgradeRequest.value = false
         val targetState = if (accept) {
             _isVideoCall.value = true
+            setSpeakerphone(true)
             VideoProfile.STATE_BIDIRECTIONAL
         } else {
             VideoProfile.STATE_AUDIO_ONLY
@@ -253,9 +301,6 @@ object CallManager {
         }
     }
 
-    /**
-     * Flips between Front ("1") and Back ("0") cameras during a carrier video call.
-     */
     fun flipVideoCamera() {
         val nextFront = !_isFrontCamera.value
         _isFrontCamera.value = nextFront
@@ -266,9 +311,6 @@ object CallManager {
         }
     }
 
-    /**
-     * Binds the remote caller's video Surface to the Telecom VideoCall provider.
-     */
     fun bindRemoteDisplaySurface(surface: android.view.Surface?) {
         try {
             _currentCall.value?.videoCall?.setDisplaySurface(surface)
@@ -276,9 +318,6 @@ object CallManager {
         }
     }
 
-    /**
-     * Binds the local self-view PiP Surface to the Telecom VideoCall provider.
-     */
     fun bindLocalPreviewSurface(surface: android.view.Surface?) {
         try {
             val videoCall = _currentCall.value?.videoCall ?: return
@@ -295,6 +334,21 @@ object CallManager {
         _currentCall.value?.let { call ->
             call.playDtmfTone(digit)
             call.stopDtmfTone()
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    fun selectSimForWaitingCall(context: Context, slotIndex: Int) {
+        val call = _currentCall.value ?: return
+        val handle = com.aether.call.util.SimAccountResolver.findPhoneAccountHandleForSlot(context, slotIndex)
+        if (handle != null) {
+            try {
+                call.phoneAccountSelected(handle, false)
+                val simInfo = com.aether.call.util.SimAccountResolver.resolveFromPhoneAccountHandle(context, handle)
+                CallBridge.simLabel.value = simInfo.displayLabel
+            } catch (e: Exception) {
+                Log.e(ICS_TAG, "selectSimForWaitingCall failed", e)
+            }
         }
     }
 
@@ -332,6 +386,8 @@ object CallManager {
     }
 
     private fun resetStates() {
+        pendingOutgoingVideoCall = false
+        _isVideoCall.value = false
         isMuted.value = false
         isSpeaker.value = false
         isOnHold.value = false
@@ -347,6 +403,7 @@ class AetherInCallService : InCallService() {
     private var resolveJob: Job? = null
     private var wasIncomingRinging = false
     private var wasAnswered = false
+    @Volatile private var incomingOverlayShowing = false
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private fun stopTts() {
@@ -369,7 +426,8 @@ class AetherInCallService : InCallService() {
             } else {
                 startForeground(notificationId, notification)
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.e(ICS_TAG, "startForeground failed", e)
             try {
                 val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
                 nm?.notify(notificationId, notification)
@@ -386,12 +444,39 @@ class AetherInCallService : InCallService() {
         stopTts()
         flipDetector?.stopListening()
         flipDetector = null
+        incomingOverlayShowing = false
         IncomingCallOverlayService.stopOverlay(this)
         try {
             stopForeground(STOP_FOREGROUND_REMOVE)
         } catch (_: Exception) {
         }
         CallNotificationManager.cancelNotification(this)
+    }
+
+    /**
+     * Handles Dual-SIM "Ask every time" (Call.STATE_SELECT_PHONE_ACCOUNT) so Samsung's native
+     * SIM picker never takes over outgoing voice or video calls.
+     */
+    @Suppress("MissingPermission", "DEPRECATION")
+    private fun handleSelectPhoneAccount(call: Call) {
+        try {
+            val tm = getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
+            val defaultHandle = tm?.getDefaultOutgoingPhoneAccount("tel")
+            val capableAccounts = tm?.callCapablePhoneAccounts.orEmpty()
+
+            if (defaultHandle != null) {
+                Log.d(ICS_TAG, "Auto-selecting default PhoneAccountHandle=$defaultHandle for STATE_SELECT_PHONE_ACCOUNT")
+                call.phoneAccountSelected(defaultHandle, false)
+            } else if (capableAccounts.size == 1) {
+                val singleHandle = capableAccounts.first()
+                Log.d(ICS_TAG, "Auto-selecting single PhoneAccountHandle=$singleHandle for STATE_SELECT_PHONE_ACCOUNT")
+                call.phoneAccountSelected(singleHandle, false)
+            } else {
+                Log.d(ICS_TAG, "Device set to 'Ask every time' with ${capableAccounts.size} SIMs — awaiting user selection in InCallActivity")
+            }
+        } catch (e: Exception) {
+            Log.e(ICS_TAG, "handleSelectPhoneAccount failed", e)
+        }
     }
 
     private fun updateAndResolveCaller(call: Call) {
@@ -420,18 +505,41 @@ class AetherInCallService : InCallService() {
                 return@launch
             }
             if (currentState == Call.STATE_RINGING && !wasAnswered) {
-                CallNotificationManager.showIncomingCallNotification(this@AetherInCallService, call, resolved)
-            } else if (currentState == Call.STATE_DIALING || currentState == Call.STATE_CONNECTING ||
-                currentState == Call.STATE_ACTIVE || currentState == Call.STATE_HOLDING
+                CallNotificationManager.showIncomingCallNotification(
+                    this@AetherInCallService,
+                    call,
+                    resolved,
+                    overlayIsShowing = incomingOverlayShowing,
+                )
+            } else if (
+                currentState == Call.STATE_SELECT_PHONE_ACCOUNT ||
+                currentState == Call.STATE_DIALING ||
+                currentState == Call.STATE_CONNECTING ||
+                currentState == Call.STATE_ACTIVE ||
+                currentState == Call.STATE_HOLDING
             ) {
                 CallNotificationManager.showOngoingCallNotification(this@AetherInCallService, call, resolved)
             }
         }
     }
 
+    private fun getFastResolvedCaller(number: String): ResolvedCaller {
+        val name = CallBridge.callerName.value.ifBlank { number.ifBlank { "Unknown Caller" } }
+        val photoUri = CallBridge.callerPhotoUri.value
+        return ResolvedCaller(
+            rawNumber = number,
+            displayName = name,
+            photoUri = photoUri,
+            isSavedContact = name != number && name != "Unknown Caller",
+            label = "Mobile",
+        )
+    }
+
     private val callCallback = object : Call.Callback() {
         override fun onDetailsChanged(call: Call, details: Call.Details) {
             super.onDetailsChanged(call, details)
+            val simInfo = com.aether.call.util.SimAccountResolver.resolveSimForActiveCall(this@AetherInCallService, call)
+            CallBridge.simLabel.value = simInfo.displayLabel
             CallManager.syncVideoCallState(call)
             @Suppress("DEPRECATION")
             if (call.state != Call.STATE_DISCONNECTED && call.state != Call.STATE_DISCONNECTING) {
@@ -441,11 +549,22 @@ class AetherInCallService : InCallService() {
 
         override fun onStateChanged(call: Call, state: Int) {
             super.onStateChanged(call, state)
+            Log.d(ICS_TAG, "onStateChanged state=$state")
             CallManager.updateState(state)
             val number = call.details?.handle?.schemeSpecificPart.orEmpty()
-            val resolved = CallerIdResolver.resolveCaller(applicationContext, number)
+            val resolved = getFastResolvedCaller(number)
 
             when (state) {
+                Call.STATE_SELECT_PHONE_ACCOUNT -> {
+                    handleSelectPhoneAccount(call)
+                    val ongoingNotif = CallNotificationManager.buildOngoingCallNotification(
+                        this@AetherInCallService,
+                        call,
+                        resolved,
+                    )
+                    promoteToForeground(CallNotificationManager.ONGOING_NOTIFICATION_ID, ongoingNotif)
+                    launchFullScreenInCall(call, number)
+                }
                 Call.STATE_DIALING, Call.STATE_CONNECTING -> {
                     val ongoingNotif = CallNotificationManager.buildOngoingCallNotification(
                         this@AetherInCallService,
@@ -468,17 +587,15 @@ class AetherInCallService : InCallService() {
                     stopTts()
                     flipDetector?.stopListening()
                     flipDetector = null
+                    incomingOverlayShowing = false
                     IncomingCallOverlayService.stopOverlay(this@AetherInCallService)
 
-                    // CRITICAL: Promote ongoing notification FIRST before canceling incoming notification
-                    // so the ForegroundService never loses its phoneCall type binding for a single millisecond
                     val ongoingNotif = CallNotificationManager.buildOngoingCallNotification(
                         this@AetherInCallService,
                         call,
                         resolved,
                     )
                     promoteToForeground(CallNotificationManager.ONGOING_NOTIFICATION_ID, ongoingNotif)
-                    CallNotificationManager.cancelIncomingCallNotification(this@AetherInCallService)
 
                     if (wasJustAnswered) {
                         launchFullScreenInCall(call, number)
@@ -500,17 +617,19 @@ class AetherInCallService : InCallService() {
                     }
                 }
                 Call.STATE_DISCONNECTING, Call.STATE_DISCONNECTED -> {
-                    forceClearAllCallUi()
-                    CallBridge.stopRecordingIfActive()
-
                     if (state == Call.STATE_DISCONNECTED) {
+                        CallManager.updateCall(null)
+                        forceClearAllCallUi()
+                        CallBridge.stopRecordingIfActive()
+
                         val disconnectCode = call.details?.disconnectCause?.code
                         if (wasIncomingRinging && !wasAnswered &&
                             (disconnectCode == DisconnectCause.MISSED ||
-                                disconnectCode == DisconnectCause.REMOTE)
+                                    disconnectCode == DisconnectCause.REMOTE)
                         ) {
-                            CallNotificationManager.showMissedCallNotification(this@AetherInCallService, resolved)
                             serviceScope.launch(Dispatchers.IO) {
+                                val fullResolved = CallerIdResolver.resolveCaller(applicationContext, number)
+                                CallNotificationManager.showMissedCallNotification(this@AetherInCallService, fullResolved)
                                 delay(450L)
                                 CallNotificationManager.suppressNativeSamsungMissedCallNotification(this@AetherInCallService)
                             }
@@ -531,7 +650,6 @@ class AetherInCallService : InCallService() {
                                 }
                             }
                         }
-                        CallManager.updateCall(null)
                     }
                 }
             }
@@ -545,47 +663,86 @@ class AetherInCallService : InCallService() {
 
     override fun onCallAdded(call: Call) {
         super.onCallAdded(call)
+        @Suppress("DEPRECATION")
+        val state = call.state
+        Log.d(ICS_TAG, "onCallAdded state=$state hasAccount=${call.details?.accountHandle != null}")
         CallManager.instance = this
         CallManager.updateCall(call)
+        val simInfo = com.aether.call.util.SimAccountResolver.resolveSimForActiveCall(this, call)
+        CallBridge.simLabel.value = simInfo.displayLabel
         CallManager.syncVideoCallState(call)
         call.registerCallback(callCallback)
 
         val number = call.details?.handle?.schemeSpecificPart.orEmpty()
-        val initialResolved = CallerIdResolver.resolveCaller(applicationContext, number)
-        CallBridge.updateCallerIdentity(
-            name = initialResolved.displayName,
-            number = number,
-            photoUri = initialResolved.photoUri,
-        )
+        val initialResolved = getFastResolvedCaller(number)
 
         val canSendText = call.details?.can(Call.Details.CAPABILITY_RESPOND_VIA_TEXT) == true
         CallManager.canRespondViaText.value = canSendText
 
-        @Suppress("DEPRECATION")
-        val state = call.state
-        if (state == Call.STATE_DIALING || state == Call.STATE_CONNECTING) {
-            wasIncomingRinging = false
-            wasAnswered = true
-            val ongoingNotif = CallNotificationManager.buildOngoingCallNotification(this, call, initialResolved)
-            promoteToForeground(CallNotificationManager.ONGOING_NOTIFICATION_ID, ongoingNotif)
-            launchFullScreenInCall(call, number)
-        } else if (state == Call.STATE_RINGING) {
-            wasIncomingRinging = true
-            wasAnswered = false
-            serviceScope.launch {
-                val settings = AppSettingsManager(this@AetherInCallService).settingsFlow.first()
-                val normIncoming = PhoneNormalizer.normalizeDigits(number)
-                val isExplicitlyBlocked = settings.blockedNumbers.any {
-                    PhoneNormalizer.normalizeDigits(it) == normIncoming && normIncoming.isNotEmpty()
-                }
-                val isUnknownBlocked = settings.blockUnknownNumbers && !initialResolved.isSavedContact
+        when (state) {
+            Call.STATE_SELECT_PHONE_ACCOUNT -> {
+                wasIncomingRinging = false
+                wasAnswered = true
+                handleSelectPhoneAccount(call)
+                val ongoingNotif = CallNotificationManager.buildOngoingCallNotification(this, call, initialResolved)
+                promoteToForeground(CallNotificationManager.ONGOING_NOTIFICATION_ID, ongoingNotif)
+                launchFullScreenInCall(call, number)
+                updateAndResolveCaller(call)
+            }
+            Call.STATE_DIALING, Call.STATE_CONNECTING -> {
+                wasIncomingRinging = false
+                wasAnswered = true
+                val ongoingNotif = CallNotificationManager.buildOngoingCallNotification(this, call, initialResolved)
+                promoteToForeground(CallNotificationManager.ONGOING_NOTIFICATION_ID, ongoingNotif)
+                launchFullScreenInCall(call, number)
+                updateAndResolveCaller(call)
+            }
+            Call.STATE_RINGING -> {
+                wasIncomingRinging = true
+                wasAnswered = false
+                // 1. Immediately claim foreground notification & UI synchronously (< 5ms)
+                handleIncomingRinging(call, number, initialResolved)
 
-                if (isExplicitlyBlocked || isUnknownBlocked) {
-                    wasIncomingRinging = false
-                    call.reject(false, null)
-                } else {
-                    handleIncomingRinging(call, number)
+                // 2. Resolve contact on IO thread FIRST, then check blocklist so saved contacts are never rejected!
+                serviceScope.launch(Dispatchers.IO) {
+                    val fullResolved = CallerIdResolver.resolveCaller(applicationContext, number)
+                    val settings = AppSettingsManager(this@AetherInCallService).settingsFlow.first()
+                    val normIncoming = PhoneNormalizer.normalizeDigits(number)
+                    val isExplicitlyBlocked = settings.blockedNumbers.any {
+                        PhoneNormalizer.normalizeDigits(it) == normIncoming && normIncoming.isNotEmpty()
+                    }
+                    val isUnknownBlocked = settings.blockUnknownNumbers && !fullResolved.isSavedContact
+
+                    if (isExplicitlyBlocked || isUnknownBlocked) {
+                        Log.d(ICS_TAG, "Rejecting blocked/unknown call from $number")
+                        wasIncomingRinging = false
+                        call.reject(false, null)
+                        withContext(Dispatchers.Main) {
+                            forceClearAllCallUi()
+                        }
+                    } else {
+                        CallBridge.updateCallerIdentity(
+                            name = fullResolved.displayName,
+                            number = number,
+                            photoUri = fullResolved.photoUri,
+                        )
+                        @Suppress("DEPRECATION")
+                        if (call.state == Call.STATE_RINGING && !wasAnswered) {
+                            CallNotificationManager.showIncomingCallNotification(
+                                this@AetherInCallService,
+                                call,
+                                fullResolved,
+                                overlayIsShowing = incomingOverlayShowing,
+                            )
+                        }
+                    }
                 }
+            }
+            else -> {
+                val ongoingNotif = CallNotificationManager.buildOngoingCallNotification(this, call, initialResolved)
+                promoteToForeground(CallNotificationManager.ONGOING_NOTIFICATION_ID, ongoingNotif)
+                launchFullScreenInCall(call, number)
+                updateAndResolveCaller(call)
             }
         }
     }
@@ -596,30 +753,28 @@ class AetherInCallService : InCallService() {
         if (CallRecordingManager.isRecording.value) {
             CallRecordingManager.stopRecording(applicationContext)
         }
-        forceClearAllCallUi()
-        if (CallManager.currentCall.value == call) {
-            CallManager.updateCall(null)
-        }
-        if (CallManager.instance == this) {
-            CallManager.instance = null
+        if (calls.isEmpty()) {
+            if (CallManager.currentCall.value == call) {
+                CallManager.updateCall(null)
+            }
+            forceClearAllCallUi()
+            if (CallManager.instance == this) {
+                CallManager.instance = null
+            }
         }
     }
 
     fun onCallAnsweredByUser() {
         wasAnswered = true
         resolveJob?.cancel()
-        // 1. Cancel incoming heads-up notification (1001)
-        CallNotificationManager.cancelIncomingCallNotification(this)
+        incomingOverlayShowing = false
+        IncomingCallOverlayService.stopOverlay(this)
 
-        // 2. Immediately switch foreground service to Ongoing Notification (1002)
         val activeCall = CallManager.currentCall.value
-        val number = activeCall?.details?.handle?.schemeSpecificPart
-            ?: CallBridge.callerNumber.value
-        val resolved = CallerIdResolver.resolveCaller(this, number)
+        val number = activeCall?.details?.handle?.schemeSpecificPart ?: CallBridge.callerNumber.value
+        val resolved = getFastResolvedCaller(number)
         val ongoingNotif = CallNotificationManager.buildOngoingCallNotification(this, activeCall, resolved)
         promoteToForeground(CallNotificationManager.ONGOING_NOTIFICATION_ID, ongoingNotif)
-
-        // 3. Bring InCallActivity to the front
         bringInCallUiToForeground()
     }
 
@@ -645,7 +800,7 @@ class AetherInCallService : InCallService() {
                 @Suppress("DEPRECATION")
                 if (activeCall.state == Call.STATE_ACTIVE || activeCall.state == Call.STATE_HOLDING) {
                     val num = activeCall.details?.handle?.schemeSpecificPart.orEmpty()
-                    val resolved = CallerIdResolver.resolveCaller(this, num)
+                    val resolved = getFastResolvedCaller(num)
                     CallNotificationManager.showOngoingCallNotification(this, activeCall, resolved)
                 }
             }
@@ -653,15 +808,17 @@ class AetherInCallService : InCallService() {
     }
 
     private fun launchFullScreenInCall(call: Call?, number: String) {
+        Log.d(ICS_TAG, "launchFullScreenInCall requested")
+        incomingOverlayShowing = false
         IncomingCallOverlayService.stopOverlay(this)
         @Suppress("DEPRECATION")
         val direction = if (call?.state == Call.STATE_RINGING) "INCOMING" else "ACTIVE"
         val intent = Intent(this, InCallActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                Intent.FLAG_ACTIVITY_NO_USER_ACTION
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                    Intent.FLAG_ACTIVITY_NO_USER_ACTION
             putExtra("CALL_NUMBER", number)
             putExtra("CALLER_NAME", CallBridge.callerName.value)
             putExtra("CALL_DIRECTION", direction)
@@ -683,37 +840,48 @@ class AetherInCallService : InCallService() {
             } else {
                 pi.send()
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.e(ICS_TAG, "PendingIntent launch failed", e)
         }
 
         try {
             startActivity(intent)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(ICS_TAG, "startActivity failed", e)
         }
     }
 
     private fun handleIncomingRinging(
         call: Call,
         number: String,
-        resolved: ResolvedCaller = CallerIdResolver.resolveCaller(this, number),
+        resolved: ResolvedCaller = getFastResolvedCaller(number),
     ) {
         flipDetector?.stopListening()
         autoAnswerJob?.cancel()
-        IncomingCallOverlayService.stopOverlay(this)
+        val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+        val isLocked = keyguardManager?.isKeyguardLocked == true
+        val canDrawOverlay = Settings.canDrawOverlays(this)
+        val isVideo = CallManager.isVideoCall.value || VideoProfile.isVideo(call.details?.videoState ?: 0)
 
-        // Post native CallStyle incoming notification (renders as Samsung One UI heads-up pop-up when unlocked
-        // and full-screen InCallActivity when locked — with 100% foreground launch privilege on Answer!)
+        val useOwnPopup = !isLocked && canDrawOverlay && !isVideo
+        Log.d(ICS_TAG, "handleIncomingRinging locked=$isLocked canDrawOverlay=$canDrawOverlay isVideo=$isVideo ownPopup=$useOwnPopup")
+
+        if (useOwnPopup) {
+            incomingOverlayShowing = true
+            IncomingCallOverlayService.startOverlay(this, number)
+        } else {
+            incomingOverlayShowing = false
+            IncomingCallOverlayService.stopOverlay(this)
+        }
+
         val incomingNotif = CallNotificationManager.buildIncomingCallNotification(
             context = this,
             caller = resolved,
-            overlayIsShowing = false,
+            overlayIsShowing = incomingOverlayShowing,
         )
         promoteToForeground(CallNotificationManager.INCOMING_NOTIFICATION_ID, incomingNotif)
 
-        val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
-        val isLocked = keyguardManager?.isKeyguardLocked == true
-        if (isLocked) {
+        if (!useOwnPopup) {
             launchFullScreenInCall(call, number)
         }
 

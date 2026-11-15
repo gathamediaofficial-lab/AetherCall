@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -162,8 +163,9 @@ fun InCallScreen(
     val isSlideIncomingStyle = incomingCallLayoutStyle.equals("SLIDE_TO_ANSWER", ignoreCase = true)
 
     // Switch to full-screen WhatsApp/Snapchat Carrier Video UI when video mode is active
-    if (isVideoCall && !isIncoming && !isEnded) {
+    if (isVideoCall) {
         CarrierVideoCallScreen(
+            callState = callState,
             callerName = callerName,
             callerNumber = callerNumber,
             callerPhotoUri = callerPhotoUri,
@@ -174,12 +176,16 @@ fun InCallScreen(
             isFrontCamera = isFrontCamera,
             onBindRemoteSurface = onBindRemoteSurface,
             onBindPreviewSurface = onBindPreviewSurface,
+            onAnswerVideoClick = onAnswerClick,
+            onAnswerAudioOnlyClick = onAnswerClick,
+            onDeclineClick = onDeclineClick,
             onFlipCamera = onFlipCamera,
             onMuteToggle = onMuteToggle,
             onSpeakerToggle = onSpeakerToggle,
             onSwitchToVoice = onVideoToggle,
             onEndCallClick = onEndCallClick,
-            modifier = modifier,
+            onCallAgainClick = { onCallAgainClick?.invoke(callerNumber.ifBlank { callerName }) },
+            onDismissEndedScreen = { onDismissEndedScreen?.invoke() },
         )
         return
     }
@@ -227,41 +233,52 @@ fun InCallScreen(
     val displayTitle = callerName.takeIf { it.isNotBlank() && it != callerNumber }
         ?: callerNumber.ifBlank { "Unknown Caller" }
 
-    // For incoming calls, use the deep minimalist iOS dark canvas while keeping subtle theme tinting
-    val activeGradientColors = if (isIncoming && activeThemeId == "SOLID_AMOLED") {
-        listOf(Color(0xFF000000), Color(0xFF000000), Color(0xFF000000))
-    } else if (isIncoming) {
-        listOf(
-            resolvedBackgroundColors.first().copy(alpha = 0.55f),
-            Color(0xFF07080A),
-            Color(0xFF000000),
-        )
-    } else {
-        resolvedBackgroundColors
-    }
-
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black)
-            .background(brush = Brush.verticalGradient(colors = activeGradientColors))
-            .systemBarsPadding(),
+            .background(Color(0xFF0A0D12)),
     ) {
-        if (!activeCustomUri.isNullOrBlank()) {
+        val fullScreenPhoto = callerPhotoUri?.takeIf { it.isNotBlank() }
+            ?: customCallBackgroundUri?.takeIf { it.isNotBlank() }
+
+        if (fullScreenPhoto != null) {
+            // Full-Screen Apple Contact Poster Photo
             AsyncImage(
-                model = ImageRequest.Builder(context).data(activeCustomUri).crossfade(true).build(),
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(fullScreenPhoto)
+                    .crossfade(true)
+                    .build(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
+            // Apple iOS Poster Gradient Scrim so white text & bottom buttons are crystal clear
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            listOf(
-                                Color.Black.copy(alpha = if (isIncoming) 0.65f else 0.50f),
-                                Color.Black.copy(alpha = 0.92f),
+                            colorStops = arrayOf(
+                                0.0f to Color.Black.copy(alpha = 0.65f),
+                                0.35f to Color.Black.copy(alpha = 0.18f),
+                                0.65f to Color.Black.copy(alpha = 0.45f),
+                                1.0f to Color.Black.copy(alpha = 0.85f),
+                            ),
+                        ),
+                    ),
+            )
+        } else {
+            // Clean Apple iOS Dark Ambient Gradient when contact has no saved photo
+            val topColor = resolvedBackgroundColors.firstOrNull()?.copy(alpha = 0.65f) ?: Color(0xFF1E293B)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                topColor,
+                                Color(0xFF0F172A),
+                                Color(0xFF07090E),
                             ),
                         ),
                     ),
@@ -271,7 +288,7 @@ fun InCallScreen(
         // =========================================================================
         // STAGE 1: IPHONE-STYLE MINIMALIST INCOMING CALL SCREEN (BEFORE RECEIVING)
         // =========================================================================
-        if (isIncoming && isSlideIncomingStyle) {
+        if (isIncoming) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -312,104 +329,103 @@ fun InCallScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
-
-                // Small "mobile" label above caller name (exact iPhone hierarchy)
-                Text(
-                    text = if (simLabel.isNotBlank()) "mobile • $simLabel" else "mobile",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color.White.copy(alpha = 0.68f),
-                    textAlign = TextAlign.Center,
+                AppleCallHeader(
+                    callerName = displayTitle,
+                    callerNumber = callerNumber,
+                    statusOrDurationText = "Incoming Call",
+                    simLabel = simLabel,
                 )
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.weight(1f))
 
-                // Large Bold Caller Name ("Samuel" / "Mr Naresh Jio")
-                Text(
-                    text = displayTitle,
-                    fontSize = 36.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 40.sp,
-                )
+                if (isSlideIncomingStyle) {
+                    // Dual Secondary Action Buttons: "Message" (left) & "Voicemail / Decline" (right)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 32.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IncomingMiniActionButton(
+                            icon = Icons.Default.ChatBubble,
+                            label = "Message",
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                showQuickReplySheet = true
+                            },
+                        )
 
-                // Optional secondary phone number line if contact has a saved name
-                if (callerNumber.isNotBlank() && callerName != callerNumber && showCallerInfoDialog) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = callerNumber,
-                        fontSize = 15.sp,
-                        color = Color(0xFF94A3B8),
-                        fontWeight = FontWeight.Medium,
+                        IncomingMiniActionButton(
+                            icon = Icons.Default.Voicemail,
+                            label = "Voicemail",
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onDeclineClick()
+                            },
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(28.dp))
+
+                    // Interactive iPhone "slide to answer" pill track
+                    SlideToAnswerTrack(
+                        onAnswered = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onAnswerClick()
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 22.dp),
                     )
-                }
+                } else {
+                    // One UI Dual-Buttons Incoming Action Dock (Decline & Answer)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 36.dp, vertical = 24.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            IconButton(
+                                onClick = onDeclineClick,
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFEF4444)),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CallEnd,
+                                    contentDescription = "Decline",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(34.dp),
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Decline", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        }
 
-                // Expansive minimalist center space (or optional subtle contact photo if set)
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (!callerPhotoUri.isNullOrBlank()) {
-                        Surface(
-                            shape = CircleShape,
-                            border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.25f)),
-                            modifier = Modifier.size(116.dp),
-                        ) {
-                            AsyncImage(
-                                model = ImageRequest.Builder(context).data(callerPhotoUri).crossfade(true).build(),
-                                contentDescription = displayTitle,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize(),
-                            )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            IconButton(
+                                onClick = onAnswerClick,
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF10B981)),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Call,
+                                    contentDescription = "Answer",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(34.dp),
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Answer", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                         }
                     }
                 }
-
-                // Dual Secondary Action Buttons: "Message" (left) & "Voicemail / Decline" (right)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 32.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IncomingMiniActionButton(
-                        icon = Icons.Default.ChatBubble,
-                        label = "Message",
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            showQuickReplySheet = true
-                        },
-                    )
-
-                    IncomingMiniActionButton(
-                        icon = Icons.Default.Voicemail,
-                        label = "Voicemail",
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onDeclineClick()
-                        },
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(28.dp))
-
-                // Interactive iPhone "slide to answer" pill track
-                SlideToAnswerTrack(
-                    onAnswered = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onAnswerClick()
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 22.dp),
-                )
             }
         } else {
             // =========================================================================
@@ -532,246 +548,28 @@ fun InCallScreen(
                     }
                 }
 
-                // SIM & Status Badge
-                Surface(
-                    shape = CircleShape,
-                    color = if (isEnded) {
-                        Color(0xFFEF4444).copy(alpha = 0.22f)
-                    } else {
-                        Color(0xFF10B981).copy(alpha = 0.20f)
-                    },
-                    border = BorderStroke(
-                        0.8.dp,
-                        if (isEnded) {
-                            Color(0xFFEF4444).copy(alpha = 0.45f)
-                        } else {
-                            Color(0xFF10B981).copy(alpha = 0.45f)
-                        },
-                    ),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = when {
-                                isEnded -> "Call ended • $simLabel"
-                                isDialing -> "Calling via $simLabel"
-                                else -> "HD Voice • $simLabel"
-                            },
-                            color = if (isEnded) Color(0xFFFCA5A5) else Color(0xFF6EE7B7),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
+                val activeStatusOrDurationText = when {
+                    isEnded -> if (finalCallDuration != "00:00") "Total duration • $finalCallDuration" else "Call ended"
+                    isDialing -> "Calling" + ".".repeat(dotCount)
+                    callState == Call.STATE_HOLDING -> "Call on hold • $callDurationText"
+                    else -> if (callDurationText.isNotBlank()) callDurationText else "Connected"
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Text(
-                    text = displayTitle,
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
+                AppleCallHeader(
+                    callerName = displayTitle,
+                    callerNumber = callerNumber,
+                    statusOrDurationText = activeStatusOrDurationText,
+                    simLabel = simLabel,
                 )
 
-                if (callerNumber.isNotBlank() && callerName != callerNumber) {
-                    Text(
-                        text = "Mobile • $callerNumber",
-                        fontSize = 15.sp,
-                        color = Color(0xFFCBD5E1),
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                AnimatedContent(
-                    targetState = callState,
-                    transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(180)) },
-                    label = "StageSubtitle",
-                ) { state ->
-                    when (state) {
-                        Call.STATE_DIALING, Call.STATE_CONNECTING -> {
-                            Text(
-                                text = "Calling" + ".".repeat(dotCount),
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF10B981),
-                            )
-                        }
-                        Call.STATE_HOLDING -> {
-                            Surface(shape = CircleShape, color = Color(0xFFFBBF24).copy(alpha = 0.2f)) {
-                                Text(
-                                    text = "⏸ Call on hold • $callDurationText",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFFBBF24),
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
-                                )
-                            }
-                        }
-                        Call.STATE_DISCONNECTED, Call.STATE_DISCONNECTING -> {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = if (finalCallDuration != "00:00") "Total duration • $finalCallDuration" else "Call ended",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFFF87171),
-                                )
-                                if (wasRecordedDuringCall) {
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Surface(shape = CircleShape, color = Color(0xFF10B981).copy(alpha = 0.18f)) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.CheckCircle,
-                                                contentDescription = null,
-                                                tint = Color(0xFF10B981),
-                                                modifier = Modifier.size(14.dp),
-                                            )
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                text = "Call recording saved",
-                                                color = Color(0xFF10B981),
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        else -> {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Text(
-                                    text = callDurationText,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF10B981),
-                                )
-                                if (isRecording) {
-                                    Surface(shape = CircleShape, color = Color(0xFFEF4444).copy(alpha = 0.22f)) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(7.dp)
-                                                    .clip(CircleShape)
-                                                    .background(Color(0xFFEF4444)),
-                                            )
-                                            Spacer(modifier = Modifier.width(5.dp))
-                                            Text(
-                                                text = "REC",
-                                                color = Color(0xFFFCA5A5),
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Center Avatar & Radar Pulse Hub
+                // Center Space / Inline DTMF Keypad
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (!showDtmfKeypad) {
-                        val isPulsing = isDialing || callState == Call.STATE_ACTIVE
-                        if (isPulsing) {
-                            val infiniteTransition = rememberInfiniteTransition(label = "RadarPulse")
-                            val outerScale by infiniteTransition.animateFloat(
-                                initialValue = 1.0f,
-                                targetValue = if (isDialing) 1.42f else 1.18f,
-                                animationSpec = infiniteRepeatable(
-                                    animation = tween(1400, easing = LinearEasing),
-                                    repeatMode = RepeatMode.Restart,
-                                ),
-                                label = "OuterScale",
-                            )
-                            val outerAlpha by infiniteTransition.animateFloat(
-                                initialValue = 0.36f,
-                                targetValue = 0.0f,
-                                animationSpec = infiniteRepeatable(
-                                    animation = tween(1400, easing = LinearEasing),
-                                    repeatMode = RepeatMode.Restart,
-                                ),
-                                label = "OuterAlpha",
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .size(144.dp)
-                                    .scale(outerScale)
-                                    .background(Color(0xFF10B981).copy(alpha = outerAlpha), CircleShape),
-                            )
-                        }
-
-                        Surface(
-                            shape = CircleShape,
-                            modifier = Modifier
-                                .size(126.dp)
-                                .border(
-                                    width = 2.dp,
-                                    color = if (isEnded) {
-                                        Color(0xFFEF4444).copy(alpha = 0.5f)
-                                    } else {
-                                        Color(0xFF10B981).copy(alpha = 0.65f)
-                                    },
-                                    shape = CircleShape,
-                                ),
-                        ) {
-                            val avatarAccent = remember(displayTitle, callerNumber) {
-                                CallBackgroundEngine.getAvatarAccentColor(displayTitle, callerNumber)
-                            }
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(
-                                        brush = Brush.linearGradient(
-                                            colors = listOf(
-                                                avatarAccent.copy(alpha = 0.85f),
-                                                avatarAccent.copy(alpha = 0.45f),
-                                            ),
-                                        ),
-                                    ),
-                            ) {
-                                if (!callerPhotoUri.isNullOrBlank()) {
-                                    AsyncImage(
-                                        model = ImageRequest.Builder(context).data(callerPhotoUri).crossfade(true).build(),
-                                        contentDescription = displayTitle,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
-                                } else {
-                                    val cleanInitial = CallBackgroundEngine.extractCleanFirstNameLetter(displayTitle, callerNumber)
-                                    Text(
-                                        text = cleanInitial,
-                                        fontSize = 48.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White,
-                                    )
-                                }
-                            }
-                        }
-                    } else {
+                    if (showDtmfKeypad) {
                         // Inline DTMF Keypad Focus Block
                         Surface(
                             shape = RoundedCornerShape(28.dp),
@@ -1477,5 +1275,72 @@ private fun PostCallActionPod(
             }
         }
         Text(label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+fun AppleCallHeader(
+    callerName: String,
+    callerNumber: String,
+    statusOrDurationText: String,
+    simLabel: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(top = 52.dp, start = 24.dp, end = 24.dp),
+    ) {
+        // Call Status / Timer at top (Apple iOS 18 style)
+        Text(
+            text = statusOrDurationText,
+            color = Color.White.copy(alpha = 0.78f),
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 0.3.sp,
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Large Apple Poster Display Name
+        Text(
+            text = callerName,
+            color = Color.White,
+            fontSize = 38.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+            lineHeight = 42.sp,
+        )
+
+        // Phone Number subtitle (shown when callerName is a saved contact name)
+        if (callerNumber.isNotBlank() && callerNumber != callerName) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = callerNumber,
+                color = Color.White.copy(alpha = 0.75f),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Normal,
+                textAlign = TextAlign.Center,
+            )
+        }
+
+        // Optional subtle SIM badge
+        if (simLabel.isNotBlank()) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Surface(
+                shape = CircleShape,
+                color = Color.White.copy(alpha = 0.14f),
+            ) {
+                Text(
+                    text = simLabel,
+                    color = Color.White.copy(alpha = 0.9f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                )
+            }
+        }
     }
 }

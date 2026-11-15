@@ -26,17 +26,25 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.SimCard
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -465,14 +473,14 @@ fun InCallActivityContainer(
         }
     }
 
-    // Auto-finish ONLY when the call is truly disconnected and removed from CallManager
+    // Show Ended Screen for 1.5 seconds before closing InCallActivity
     var hasSeenActiveOrRingingCall by remember { mutableStateOf(false) }
     LaunchedEffect(callState, currentCall) {
         if (currentCall != null && callState != Call.STATE_DISCONNECTED) {
             hasSeenActiveOrRingingCall = true
         }
         if (hasSeenActiveOrRingingCall && callState == Call.STATE_DISCONNECTED && currentCall == null) {
-            delay(350L)
+            delay(1500L)
             onFinish()
         }
     }
@@ -486,8 +494,9 @@ fun InCallActivityContainer(
             durationText = durationText,
             posterPhotoUri = posterPhotoUri,
         )
-    } else if (isCarrierVideoCall) {
+    } else if (isVideoCall) {
         CarrierVideoCallScreen(
+            callState = callState,
             callerName = contactName,
             callerNumber = handle,
             callerPhotoUri = posterPhotoUri,
@@ -498,11 +507,23 @@ fun InCallActivityContainer(
             isFrontCamera = isFrontCamera,
             onBindRemoteSurface = { surface -> CallManager.bindRemoteDisplaySurface(surface) },
             onBindPreviewSurface = { surface -> CallManager.bindLocalPreviewSurface(surface) },
+            onAnswerVideoClick = { CallManager.answer(asVideo = true) },
+            onAnswerAudioOnlyClick = { CallManager.answerAsAudioOnly() },
+            onDeclineClick = {
+                CallBridge.rejectCall()
+                onFinish()
+            },
             onFlipCamera = { CallManager.flipVideoCamera() },
             onMuteToggle = { CallBridge.toggleMute() },
             onSpeakerToggle = { CallBridge.toggleSpeaker() },
             onSwitchToVoice = { CallManager.toggleVideoCall() },
             onEndCallClick = { CallBridge.disconnectCall() },
+            onCallAgainClick = {
+                if (handle.isNotBlank()) {
+                    com.aether.call.data.CallLogRepository.placeCarrierCall(context, handle)
+                }
+            },
+            onDismissEndedScreen = { onFinish() },
         )
     } else {
         InCallScreen(
@@ -581,6 +602,88 @@ fun InCallActivityContainer(
             containerColor = Color(0xFF1E2024),
             titleContentColor = Color.White,
             textContentColor = Color.White.copy(alpha = 0.85f),
+        )
+    }
+
+    if (callState == Call.STATE_SELECT_PHONE_ACCOUNT) {
+        val activeSims = remember(context) { com.aether.call.telecom.SimManager.getActiveSims(context) }
+        AlertDialog(
+            onDismissRequest = { CallBridge.disconnectCall() },
+            containerColor = Color(0xFF1E2024),
+            shape = RoundedCornerShape(26.dp),
+            title = {
+                Column {
+                    Text(
+                        text = "Select SIM for call",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    if (handle.isNotBlank()) {
+                        Text(
+                            text = contactName.ifBlank { handle },
+                            color = Color(0xFF94A3B8),
+                            fontSize = 13.sp,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    activeSims.forEachIndexed { idx, sim ->
+                        Surface(
+                            onClick = {
+                                CallManager.selectSimForWaitingCall(context, sim.slotIndex)
+                            },
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFF141619),
+                            border = BorderStroke(1.dp, Color(0xFF2E3138)),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color(0xFF10B981).copy(alpha = 0.16f),
+                                    modifier = Modifier.size(36.dp),
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.SimCard,
+                                            contentDescription = null,
+                                            tint = Color(0xFF10B981),
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = "SIM ${idx + 1} • ${sim.carrierName}",
+                                        color = Color.White,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                    Text(
+                                        text = "Slot ${sim.slotIndex + 1}",
+                                        color = Color(0xFF8E8E93),
+                                        fontSize = 12.sp,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { CallBridge.disconnectCall() }) {
+                    Text("Cancel", color = Color(0xFF8E8E93))
+                }
+            },
         )
     }
 }

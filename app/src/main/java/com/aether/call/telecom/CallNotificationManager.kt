@@ -7,8 +7,6 @@ import android.app.PendingIntent
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
-import android.media.AudioAttributes
-import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.provider.CallLog
@@ -19,59 +17,68 @@ import com.aether.call.MainActivity
 
 object CallNotificationManager {
 
-    const val INCOMING_CHANNEL_ID = "aether_incoming_calls_v4"
-    const val ONGOING_CHANNEL_ID = "aether_ongoing_calls_v4"
+    const val CALL_CHANNEL_ID = "aether_telecom_channel_v3_silent"
+    const val UNIFIED_CALL_NOTIFICATION_ID = 1001
+    const val INCOMING_NOTIFICATION_ID = 1001
+    const val ONGOING_NOTIFICATION_ID = 1001
+    const val CALL_NOTIFICATION_ID = UNIFIED_CALL_NOTIFICATION_ID
+
+    const val QUIET_CALL_CHANNEL_ID = "aether_call_quiet_v1"
+    const val INCOMING_CHANNEL_ID = CALL_CHANNEL_ID
+    const val ONGOING_CHANNEL_ID = QUIET_CALL_CHANNEL_ID
     const val MISSED_CHANNEL_ID = "aether_missed_calls_v4"
 
-    const val INCOMING_NOTIFICATION_ID = 1001
-    const val ONGOING_NOTIFICATION_ID = 1002
-    const val CALL_NOTIFICATION_ID = ONGOING_NOTIFICATION_ID
     private const val MISSED_BASE_NOTIFICATION_ID = 2000
 
     fun createNotificationChannel(context: Context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-        val audioAttrs = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build()
+            // Delete legacy channels that may have cached a second ringtone
+            nm.deleteNotificationChannel("aether_incall_channel")
+            nm.deleteNotificationChannel("aether_call_channel")
+            nm.deleteNotificationChannel("incoming_call_channel")
+            nm.deleteNotificationChannel("aether_incoming_calls_v4")
+            nm.deleteNotificationChannel("aether_ongoing_calls_v4")
+            nm.deleteNotificationChannel("aether_telecom_channel_v2_silent")
 
-        val incomingChannel = NotificationChannel(
-            INCOMING_CHANNEL_ID,
-            "Incoming Calls",
-            NotificationManager.IMPORTANCE_HIGH,
-        ).apply {
-            description = "Incoming call pop-up banners and full-screen alerts"
-            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-            enableVibration(true)
-            setSound(ringtoneUri, audioAttrs)
-            setBypassDnd(true)
+            val channel = NotificationChannel(
+                CALL_CHANNEL_ID,
+                "Active & Incoming Calls",
+                NotificationManager.IMPORTANCE_HIGH,
+            ).apply {
+                description = "Displays incoming and ongoing call screens"
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                setSound(null, null)
+                enableVibration(false)
+            }
+            nm.createNotificationChannel(channel)
+
+            // Quiet channel: ongoing-call notification and the incoming notification while our own
+            // floating pop-up is showing. No heads-up, no sound, no vibration.
+            val quietChannel = NotificationChannel(
+                QUIET_CALL_CHANNEL_ID,
+                "Ongoing Calls",
+                NotificationManager.IMPORTANCE_LOW,
+            ).apply {
+                description = "Shows the current call in the notification shade without pop-ups"
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                setSound(null, null)
+                enableVibration(false)
+            }
+            nm.createNotificationChannel(quietChannel)
+
+            val missedChannel = NotificationChannel(
+                MISSED_CHANNEL_ID,
+                "Missed Calls",
+                NotificationManager.IMPORTANCE_HIGH,
+            ).apply {
+                description = "Missed call alerts with Call Back and Message buttons"
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                enableVibration(true)
+            }
+            nm.createNotificationChannel(missedChannel)
         }
-
-        val ongoingChannel = NotificationChannel(
-            ONGOING_CHANNEL_ID,
-            "Ongoing Calls",
-            NotificationManager.IMPORTANCE_DEFAULT,
-        ).apply {
-            description = "Ongoing active call status bar chip and Hang Up control"
-            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-            setSound(null, null)
-            enableVibration(false)
-        }
-
-        val missedChannel = NotificationChannel(
-            MISSED_CHANNEL_ID,
-            "Missed Calls",
-            NotificationManager.IMPORTANCE_HIGH,
-        ).apply {
-            description = "Missed call alerts with Call Back and Message buttons"
-            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-            enableVibration(true)
-        }
-
-        nm.createNotificationChannels(listOf(incomingChannel, ongoingChannel, missedChannel))
     }
 
     fun buildIncomingCallNotification(
@@ -83,8 +90,8 @@ object CallNotificationManager {
         return ActiveCallNotificationBuilder.buildIncomingNotification(
             context = context,
             caller = caller,
-            channelId = INCOMING_CHANNEL_ID,
-            attachFullScreenIntent = true,
+            channelId = if (overlayIsShowing) QUIET_CALL_CHANNEL_ID else INCOMING_CHANNEL_ID,
+            attachFullScreenIntent = !overlayIsShowing,
         )
     }
 
@@ -107,14 +114,14 @@ object CallNotificationManager {
         @Suppress("DEPRECATION")
         if (call.state != Call.STATE_RINGING) return
         createNotificationChannel(context)
-        val notification = buildIncomingCallNotification(context, caller, false)
+        val notification = buildIncomingCallNotification(context, caller, overlayIsShowing)
         val service = CallManager.instance
         if (service != null) {
-            service.promoteToForeground(INCOMING_NOTIFICATION_ID, notification)
+            service.promoteToForeground(UNIFIED_CALL_NOTIFICATION_ID, notification)
         } else {
             try {
                 val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-                nm?.notify(INCOMING_NOTIFICATION_ID, notification)
+                nm?.notify(UNIFIED_CALL_NOTIFICATION_ID, notification)
             } catch (_: Exception) {
             }
         }
@@ -122,7 +129,8 @@ object CallNotificationManager {
 
     fun showOngoingCallNotification(context: Context, call: Call?, caller: ResolvedCaller) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
-        nm.cancel(INCOMING_NOTIFICATION_ID)
+        // CRITICAL FIX: NEVER call nm.cancel(INCOMING_NOTIFICATION_ID) here!
+        // Updating ID 1001 in-place via promoteToForeground keeps the ForegroundService unbroken.
 
         @Suppress("DEPRECATION")
         val state = call?.state ?: Call.STATE_DISCONNECTED
@@ -134,10 +142,10 @@ object CallNotificationManager {
         val notification = buildOngoingCallNotification(context, call, caller)
         val service = CallManager.instance
         if (service != null) {
-            service.promoteToForeground(ONGOING_NOTIFICATION_ID, notification)
+            service.promoteToForeground(UNIFIED_CALL_NOTIFICATION_ID, notification)
         } else {
             try {
-                nm.notify(ONGOING_NOTIFICATION_ID, notification)
+                nm.notify(UNIFIED_CALL_NOTIFICATION_ID, notification)
             } catch (_: Exception) {
             }
         }
@@ -233,17 +241,20 @@ object CallNotificationManager {
     }
 
     fun cancelIncomingCallNotification(context: Context) {
+        if (CallManager.currentCall.value != null) return
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-        nm?.cancel(INCOMING_NOTIFICATION_ID)
+        nm?.cancel(UNIFIED_CALL_NOTIFICATION_ID)
     }
 
     fun cancelNotification(context: Context) {
+        if (CallManager.currentCall.value != null) return
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-        nm?.cancel(INCOMING_NOTIFICATION_ID)
-        nm?.cancel(ONGOING_NOTIFICATION_ID)
+        nm?.cancel(UNIFIED_CALL_NOTIFICATION_ID)
     }
 
     fun cancelById(context: Context, notificationId: Int) {
+        // Guard against CallActionReceiver canceling ID 1001 while a call is still active
+        if (notificationId == UNIFIED_CALL_NOTIFICATION_ID && CallManager.currentCall.value != null) return
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
         nm?.cancel(notificationId)
     }

@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.Icon
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
@@ -89,6 +90,7 @@ fun OneUiRecentsScreen(
     onCallDetailsClick: (CallLogItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     var selectedFilter by rememberSaveable { mutableStateOf(CallFilterMode.ALL) }
     var showFilterModal by rememberSaveable { mutableStateOf(false) }
     var pendingFilterSelection by rememberSaveable { mutableStateOf(CallFilterMode.ALL) }
@@ -338,7 +340,9 @@ fun OneUiRecentsScreen(
                                                             RecentsActionCircle(
                                                                 icon = Icons.Default.Videocam,
                                                                 bgColor = Color(0xFF10B981),
-                                                                onClick = { onCallClick(log.number) },
+                                                                onClick = {
+                                                                    com.aether.call.data.CallLogRepository.placeCarrierVideoCall(context, log.number)
+                                                                },
                                                             )
                                                             RecentsActionCircle(
                                                                 icon = Icons.Default.Info,

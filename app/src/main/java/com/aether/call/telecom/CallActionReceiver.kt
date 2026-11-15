@@ -1,8 +1,10 @@
 package com.aether.call.telecom
 
+import android.app.ActivityOptions
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import com.aether.call.data.CallLogRepository
 
 class CallActionReceiver : BroadcastReceiver() {
@@ -29,26 +31,31 @@ class CallActionReceiver : BroadcastReceiver() {
                 val openInCall = Intent(context, com.aether.call.ui.InCallActivity::class.java).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                         Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
                         Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
                     putExtra("CALL_NUMBER", number)
                     putExtra("CALLER_NAME", CallBridge.callerName.value)
-                    putExtra("CALL_DIRECTION", "INCOMING")
+                    putExtra("CALL_DIRECTION", "ACTIVE")
                 }
                 try {
-                    context.startActivity(openInCall)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                        val options = ActivityOptions.makeBasic().apply {
+                            pendingIntentBackgroundActivityStartMode =
+                                ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                        }
+                        context.startActivity(openInCall, options.toBundle())
+                    } else {
+                        context.startActivity(openInCall)
+                    }
                 } catch (_: Exception) {
                 }
             }
             ACTION_DECLINE -> {
                 IncomingCallOverlayService.stopOverlay(context)
                 CallBridge.rejectCall()
-                CallNotificationManager.cancelIncomingCallNotification(context)
             }
             ACTION_HANGUP -> {
                 IncomingCallOverlayService.stopOverlay(context)
                 CallBridge.disconnectCall()
-                CallNotificationManager.cancelNotification(context)
             }
             ACTION_TOGGLE_MUTE -> {
                 CallBridge.toggleMute()
