@@ -473,14 +473,24 @@ fun InCallActivityContainer(
         }
     }
 
-    // Show Ended Screen for 1.5 seconds before closing InCallActivity
+    var wasVideoSession by remember { mutableStateOf(false) }
+
+    LaunchedEffect(currentCall, isVideoCall) {
+        if (isVideoCall) {
+            wasVideoSession = true
+        } else if (currentCall != null && (callState == Call.STATE_RINGING || callState == Call.STATE_DIALING || callState == Call.STATE_ACTIVE)) {
+            wasVideoSession = false
+        }
+    }
+
+    // Show Ended Screen for 4.0 seconds before closing InCallActivity
     var hasSeenActiveOrRingingCall by remember { mutableStateOf(false) }
     LaunchedEffect(callState, currentCall) {
         if (currentCall != null && callState != Call.STATE_DISCONNECTED) {
             hasSeenActiveOrRingingCall = true
         }
         if (hasSeenActiveOrRingingCall && callState == Call.STATE_DISCONNECTED && currentCall == null) {
-            delay(1500L)
+            delay(4000L)
             onFinish()
         }
     }
@@ -494,7 +504,7 @@ fun InCallActivityContainer(
             durationText = durationText,
             posterPhotoUri = posterPhotoUri,
         )
-    } else if (isVideoCall) {
+    } else if (isVideoCall || (wasVideoSession && (callState == Call.STATE_DISCONNECTING || callState == Call.STATE_DISCONNECTED))) {
         CarrierVideoCallScreen(
             callState = callState,
             callerName = contactName,
@@ -519,6 +529,7 @@ fun InCallActivityContainer(
             onSwitchToVoice = { CallManager.toggleVideoCall() },
             onEndCallClick = { CallBridge.disconnectCall() },
             onCallAgainClick = {
+                wasVideoSession = false
                 if (handle.isNotBlank()) {
                     com.aether.call.data.CallLogRepository.placeCarrierCall(context, handle)
                 }
@@ -566,6 +577,7 @@ fun InCallActivityContainer(
             onDtmfDigitPress = { digit -> CallBridge.playDtmfTone(digit) },
             onEndCallClick = { CallBridge.disconnectCall() },
             onCallAgainClick = { numberToRedial ->
+                wasVideoSession = false
                 if (numberToRedial.isNotBlank()) {
                     com.aether.call.data.CallLogRepository.placeCarrierCall(context, numberToRedial)
                 }

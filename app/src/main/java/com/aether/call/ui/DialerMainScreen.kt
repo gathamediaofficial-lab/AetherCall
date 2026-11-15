@@ -314,9 +314,9 @@ fun DialerMainScreen(
             showAboutScreen -> {
                 val dynamicVersion = remember(context) {
                     try {
-                        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.1"
+                        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.1.1"
                     } catch (_: Exception) {
-                        "1.0.1"
+                        "1.1.1"
                     }
                 }
                 AboutSettingsScreen(

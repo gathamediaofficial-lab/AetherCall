@@ -1,5 +1,7 @@
 package com.aether.call.ui
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
@@ -22,7 +24,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
@@ -33,7 +34,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -66,19 +66,18 @@ fun AboutSettingsScreen(
     val context = LocalContext.current
     val resolvedVersion = remember(context, appVersionName) {
         appVersionName?.takeIf { it.isNotBlank() } ?: try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.1"
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.1.1"
         } catch (_: Exception) {
-            "1.0.1"
+            "1.1.1"
         }
     }
     val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
 
     var isCheckingUpdate by remember { mutableStateOf(false) }
-    var updateResultDialog by remember { mutableStateOf<GitHubUpdateChecker.UpdateInfo?>(null) }
-    var showUpdateSheet by remember { mutableStateOf(false) }
+    var updateStatusSubtitle by remember { mutableStateOf<String?>(null) }
+    var updateStatusColor by remember { mutableStateOf(Color(0xFF9E9E9E)) }
 
-    // Full-screen Dialog ensures independent window bounds (Zero infinite height crashes even if placed inside LazyColumn)
     Dialog(
         onDismissRequest = onBack,
         properties = DialogProperties(
@@ -290,17 +289,38 @@ fun AboutSettingsScreen(
                                         if (!isCheckingUpdate) {
                                             isCheckingUpdate = true
                                             coroutineScope.launch {
-                                                val result = GitHubUpdateChecker.checkForUpdates(context, resolvedVersion)
+                                                val result = GitHubUpdateChecker.checkForUpdate(resolvedVersion)
                                                 isCheckingUpdate = false
-                                                if (result != null) {
-                                                    updateResultDialog = result
-                                                    showUpdateSheet = true
-                                                } else {
-                                                    Toast.makeText(
-                                                        context,
-                                                        "Unable to reach GitHub releases or already on latest version.",
-                                                        Toast.LENGTH_SHORT,
-                                                    ).show()
+                                                when (result) {
+                                                    is GitHubUpdateChecker.UpdateCheckResult.UpdateAvailable -> {
+                                                        updateStatusSubtitle = "New version v${result.release.version} available!"
+                                                        updateStatusColor = Color(0xFF6EE7B7)
+                                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(result.release.htmlUrl)).apply {
+                                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                                        }
+                                                        try {
+                                                            context.startActivity(intent)
+                                                        } catch (_: Exception) {
+                                                        }
+                                                    }
+                                                    is GitHubUpdateChecker.UpdateCheckResult.UpToDate -> {
+                                                        updateStatusSubtitle = "You are on the latest version ($resolvedVersion)"
+                                                        updateStatusColor = Color(0xFF9E9E9E)
+                                                        Toast.makeText(
+                                                            context,
+                                                            "You are already on the latest version",
+                                                            Toast.LENGTH_SHORT,
+                                                        ).show()
+                                                    }
+                                                    is GitHubUpdateChecker.UpdateCheckResult.Error -> {
+                                                        updateStatusSubtitle = "Unable to check updates"
+                                                        updateStatusColor = Color(0xFFEF4444)
+                                                        Toast.makeText(
+                                                            context,
+                                                            "Unable to check updates: ${result.message}",
+                                                            Toast.LENGTH_SHORT,
+                                                        ).show()
+                                                    }
                                                 }
                                             }
                                         }
@@ -342,9 +362,13 @@ fun AboutSettingsScreen(
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = if (isCheckingUpdate) "Checking GitHub repository..." else "Check if a new version is available",
+                                        text = if (isCheckingUpdate) {
+                                            "Checking GitHub repository..."
+                                        } else {
+                                            updateStatusSubtitle ?: "Check if a new version is available"
+                                        },
                                         fontSize = 13.sp,
-                                        color = Color(0xFF9E9E9E),
+                                        color = updateStatusColor,
                                     )
                                 }
 
@@ -417,123 +441,6 @@ fun AboutSettingsScreen(
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
-            }
-        }
-
-        // Update Available / Status Bottom Sheet
-        if (showUpdateSheet && updateResultDialog != null) {
-            val info = updateResultDialog!!
-            ModalBottomSheet(
-                onDismissRequest = { showUpdateSheet = false },
-                containerColor = Color(0xFF1E2024),
-                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = if (info.hasUpdate) Color(0xFF10B981).copy(alpha = 0.2f) else Color(0xFF3B82F6).copy(alpha = 0.2f),
-                        modifier = Modifier.size(60.dp),
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = if (info.hasUpdate) Icons.Default.Refresh else Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                tint = if (info.hasUpdate) Color(0xFF10B981) else Color(0xFF3B82F6),
-                                modifier = Modifier.size(28.dp),
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Text(
-                        text = if (info.hasUpdate) "New Version Available!" else "You're Up to Date!",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Latest Release: v${info.latestVersion}",
-                        fontSize = 14.sp,
-                        color = Color(0xFF6EE7B7),
-                        fontWeight = FontWeight.SemiBold,
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = Color(0xFF141619),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                text = "Release Notes:",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF94A3B8),
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = info.releaseNotes.ifBlank { "Performance improvements and stability fixes." },
-                                fontSize = 13.sp,
-                                color = Color.White,
-                                lineHeight = 18.sp,
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    if (info.hasUpdate) {
-                        Surface(
-                            onClick = {
-                                showUpdateSheet = false
-                                GitHubUpdateChecker.openWebPage(context, info.downloadUrl)
-                            },
-                            shape = CircleShape,
-                            color = Color(0xFF10B981),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(54.dp),
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(
-                                    text = "Download Update from GitHub",
-                                    color = Color.Black,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-                        }
-                    } else {
-                        Surface(
-                            onClick = { showUpdateSheet = false },
-                            shape = CircleShape,
-                            color = Color(0xFF2A2D35),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(54.dp),
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(
-                                    text = "Close",
-                                    color = Color.White,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(20.dp))
-                }
             }
         }
     }

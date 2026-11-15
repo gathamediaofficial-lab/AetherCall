@@ -29,7 +29,7 @@ object ActiveCallNotificationBuilder {
     private fun backgroundActivityAllowBundle(): android.os.Bundle? {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             ActivityOptions.makeBasic().apply {
-                pendingIntentBackgroundActivityStartMode =
+                pendingIntentCreatorBackgroundActivityStartMode =
                     ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
             }.toBundle()
         } else {

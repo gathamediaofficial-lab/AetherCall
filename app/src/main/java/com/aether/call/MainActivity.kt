@@ -185,13 +185,7 @@ class MainActivity : ComponentActivity() {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
-            permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
             permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
-        }
-
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
-            @Suppress("DEPRECATION")
-            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
 
         return permissions

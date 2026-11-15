@@ -63,6 +63,13 @@ fun CarrierVideoCallScreen(
     var controlsVisible by remember { mutableStateOf(true) }
     var pipOffsetX by remember { mutableFloatStateOf(0f) }
     var pipOffsetY by remember { mutableFloatStateOf(0f) }
+    var finalCallDuration by remember { mutableStateOf("00:00") }
+
+    LaunchedEffect(callDurationText) {
+        if (callDurationText != "00:00") {
+            finalCallDuration = callDurationText
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -299,7 +306,7 @@ fun CarrierVideoCallScreen(
                         }
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            text = callDurationText,
+                            text = if (finalCallDuration != "00:00") "Total duration • $finalCallDuration" else "Video Call Ended",
                             color = Color.White.copy(alpha = 0.6f),
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Medium

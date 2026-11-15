@@ -23,7 +23,7 @@ object CallNotificationManager {
     const val ONGOING_NOTIFICATION_ID = 1001
     const val CALL_NOTIFICATION_ID = UNIFIED_CALL_NOTIFICATION_ID
 
-    const val QUIET_CALL_CHANNEL_ID = "aether_call_quiet_v1"
+    const val QUIET_CALL_CHANNEL_ID = "aether_call_quiet_v2"
     const val INCOMING_CHANNEL_ID = CALL_CHANNEL_ID
     const val ONGOING_CHANNEL_ID = QUIET_CALL_CHANNEL_ID
     const val MISSED_CHANNEL_ID = "aether_missed_calls_v4"
@@ -41,6 +41,7 @@ object CallNotificationManager {
             nm.deleteNotificationChannel("aether_incoming_calls_v4")
             nm.deleteNotificationChannel("aether_ongoing_calls_v4")
             nm.deleteNotificationChannel("aether_telecom_channel_v2_silent")
+            nm.deleteNotificationChannel("aether_call_quiet_v1")
 
             val channel = NotificationChannel(
                 CALL_CHANNEL_ID,
@@ -59,7 +60,7 @@ object CallNotificationManager {
             val quietChannel = NotificationChannel(
                 QUIET_CALL_CHANNEL_ID,
                 "Ongoing Calls",
-                NotificationManager.IMPORTANCE_LOW,
+                NotificationManager.IMPORTANCE_DEFAULT,
             ).apply {
                 description = "Shows the current call in the notification shade without pop-ups"
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC

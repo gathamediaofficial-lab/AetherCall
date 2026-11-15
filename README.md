@@ -6,16 +6,16 @@ It combines the clean, edge-to-edge Apple iOS 18 Contact Poster in-call experien
 
 ---
 
-## ✨ What's New in v1.0.1
+## ✨ What's New in v1.1.1
 
 * 🍎 **Pure Apple iOS 18 Full-Screen Call Interface**: Removed center circular contact avatars on incoming and active call screens in favor of full-bleed edge-to-edge Contact Posters (when a contact photo is saved) with a multi-stop vertical readability scrim, or a sleek dark ambient gradient with bold top-centered typography.
 * 📹 **Complete 3-Stage Carrier HD Video Calling (ViLTE / IMS)**:
-  * **Incoming Video Call Screen (`STATE_RINGING`)**: Live local camera preview with options to Decline, Answer as Voice Only, or Accept Video before your camera is transmitted.
+  * **Incoming Video Call Screen (`STATE_RINGING`)**: Live local camera preview with options to Decline, Answer as Voice Only, or Accept Video before your camera stream goes live.
   * **Active Video Call Screen (`STATE_ACTIVE`)**: Full-screen remote peer video stream, draggable rounded Picture-in-Picture (PiP) self-view with 1-tap camera flip, top frosted caller/timer pill, and bottom frosted control dock.
-  * **Ended Video Call Screen (`STATE_DISCONNECTED`)**: Clean summary screen displaying call duration and instant Call Again or Done actions.
-* 🛡️ **Hardened Samsung One UI & OEM Call Ownership**: Unified foreground service notification binding (`ID = 1001`) with dual-channel quiet/high-importance routing (`aether_telecom_channel_v3_silent` + `aether_call_quiet_v1`) and `.setOnlyAlertOnce(true)` to eliminate double ringtones and prevent native OEM dialers from hijacking active calls upon answer.
+  * **4-Second Ended Call Summary (`STATE_DISCONNECTED`)**: Both Audio and Video calls now display a persistent 4-second post-call summary screen showing call duration with instant Call Again or Done actions.
+* 🛡️ **Hardened Samsung One UI & OEM Call Ownership**: Unified foreground service notification binding (`ID = 1001`) with dual-channel quiet/high-importance routing (`aether_telecom_channel_v3_silent` + `aether_call_quiet_v2`) and `.setOnlyAlertOnce(true)` to eliminate double ringtones, prevent crashes, and stop native OEM dialers from hijacking active calls upon answer.
 * 📶 **Precision Dual-SIM Carrier Detection & "Ask Every Time" Support**: Powered by `SimAccountResolver`, Aether Call cross-matches `TelecomManager` `PhoneAccountHandle` labels, ICCIDs, subscription IDs, and physical slot indices (`SIM 1 • Jio`, `SIM 2 • Airtel`) and honours Android's "Ask every time" (`STATE_SELECT_PHONE_ACCOUNT`) setting across voice calls, video calls, and redials.
-* 🔓 **Sideloaded APK "Restricted Settings" Onboarding**: Interactive setup guide on the main screen that directs Android 13, 14, and 15 users straight to App Info (*Allow restricted settings*), `ROLE_DIALER`, Full-Screen Intent permissions, and Overlay controls in one tap.
+* 🔓 **Sideloaded APK "Restricted Settings" Onboarding & Play Policy Cleanup**: Interactive setup guide on the main screen directing Android 13, 14, and 15 users straight to App Info (*Allow restricted settings*), `ROLE_DIALER`, Full-Screen Intent permissions, and Overlay controls, alongside a trimmed Google Play–compliant permission manifest.
 
 ---
 
@@ -55,7 +55,7 @@ Aether Call is built on a strict **Zero Data Collection** policy:
 ## 📥 Installation & Setup Guide (Android 8.0 – Android 15+)
 
 1. **Download the APK**:
-   Download the latest signed release APK (`AetherCall-v1.0.1.apk`) from the GitHub Releases page.
+   Download the latest signed release APK (`AetherCall-v1.1.1.apk`) from the GitHub Releases page.
 
 2. **Unlock Restricted Settings (Android 13 / 14 / 15+ Users)**:
    Because the APK is installed directly from GitHub outside the Google Play Store, Android 13+ applies Enhanced Confirmation Mode:

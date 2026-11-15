@@ -91,6 +91,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -1322,7 +1323,7 @@ fun OneUiContactEditSheet(
     var nickname by rememberSaveable { mutableStateOf("") }
     var isNameExpanded by rememberSaveable { mutableStateOf(false) }
 
-    var primaryPhoneIndex by rememberSaveable { mutableStateOf(0) }
+    var primaryPhoneIndex by rememberSaveable { mutableIntStateOf(0) }
     var isEmergencyContact by rememberSaveable {
         mutableStateOf(contactToEdit?.let { ContactsRepository.isEmergencyContact(context, it.id) } ?: false)
     }

@@ -1,6 +1,5 @@
 package com.aether.call.telecom
 
-import android.app.ActivityOptions
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -37,15 +36,7 @@ class CallActionReceiver : BroadcastReceiver() {
                     putExtra("CALL_DIRECTION", "ACTIVE")
                 }
                 try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                        val options = ActivityOptions.makeBasic().apply {
-                            pendingIntentBackgroundActivityStartMode =
-                                ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
-                        }
-                        context.startActivity(openInCall, options.toBundle())
-                    } else {
-                        context.startActivity(openInCall)
-                    }
+                    context.startActivity(openInCall)
                 } catch (_: Exception) {
                 }
             }
