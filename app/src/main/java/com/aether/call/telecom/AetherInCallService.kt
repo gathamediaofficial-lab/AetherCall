@@ -63,12 +63,109 @@ object CallManager {
     val canRespondViaText = MutableStateFlow(false)
     val callDurationSeconds = MutableStateFlow(0L)
 
+    private val _allCalls = MutableStateFlow<List<Call>>(emptyList())
+    val allCalls: StateFlow<List<Call>> = _allCalls.asStateFlow()
+
+    private val _isConferenceCall = MutableStateFlow(false)
+    val isConferenceCall: StateFlow<Boolean> = _isConferenceCall.asStateFlow()
+
+    private val _canMergeCalls = MutableStateFlow(false)
+    val canMergeCalls: StateFlow<Boolean> = _canMergeCalls.asStateFlow()
+
+    private val _canSwapCalls = MutableStateFlow(false)
+    val canSwapCalls: StateFlow<Boolean> = _canSwapCalls.asStateFlow()
+
+    private val _secondCallName = MutableStateFlow<String?>(null)
+    val secondCallName: StateFlow<String?> = _secondCallName.asStateFlow()
+
+    private val _secondCallNumber = MutableStateFlow<String?>(null)
+    val secondCallNumber: StateFlow<String?> = _secondCallNumber.asStateFlow()
+
+    fun syncCallsList(calls: List<Call>) {
+        _allCalls.value = calls
+        _canMergeCalls.value = calls.size >= 2
+        _canSwapCalls.value = calls.any { it.state == Call.STATE_HOLDING } && calls.any { it.state == Call.STATE_ACTIVE }
+
+        val activeConf = calls.firstOrNull {
+            it.details?.hasProperty(Call.Details.PROPERTY_CONFERENCE) == true ||
+                    it.children.size > 0
+        }
+        _isConferenceCall.value = activeConf != null
+
+        val heldCall = calls.firstOrNull { it.state == Call.STATE_HOLDING }
+        if (heldCall != null) {
+            val handle = heldCall.details?.handle?.schemeSpecificPart.orEmpty()
+            val name = heldCall.details?.callerDisplayName.orEmpty().ifBlank { handle }
+            _secondCallName.value = name
+            _secondCallNumber.value = handle
+        } else {
+            _secondCallName.value = null
+            _secondCallNumber.value = null
+        }
+    }
+
+    fun mergeCalls() {
+        val calls = _allCalls.value
+        if (calls.size < 2) return
+
+        val primaryCall = calls.firstOrNull { it.state == Call.STATE_ACTIVE } ?: calls.first()
+        val secondaryCall = calls.firstOrNull { it !== primaryCall }
+
+        if (primaryCall != null && secondaryCall != null) {
+            try {
+                primaryCall.conference(secondaryCall)
+                Log.d(ICS_TAG, "Initiated Call.conference() for multi-party call merge")
+
+                if (primaryCall.details?.can(Call.Details.CAPABILITY_MERGE_CONFERENCE) == true) {
+                    primaryCall.mergeConference()
+                }
+                if (secondaryCall.details?.can(Call.Details.CAPABILITY_MERGE_CONFERENCE) == true) {
+                    secondaryCall.mergeConference()
+                }
+            } catch (e: Exception) {
+                Log.e(ICS_TAG, "mergeCalls failed", e)
+            }
+        }
+    }
+
+    fun swapCalls() {
+        val calls = _allCalls.value
+        if (calls.size < 2) return
+
+        val activeCall = calls.firstOrNull { it.state == Call.STATE_ACTIVE }
+        val heldCall = calls.firstOrNull { it.state == Call.STATE_HOLDING }
+
+        try {
+            if (heldCall != null) {
+                heldCall.unhold()
+                activeCall?.hold()
+                Log.d(ICS_TAG, "Swapped active and held calls")
+            } else if (calls.size >= 2) {
+                calls[0].hold()
+                calls[1].unhold()
+            }
+        } catch (e: Exception) {
+            Log.e(ICS_TAG, "swapCalls failed", e)
+        }
+    }
+
     private val managerScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var timerJob: Job? = null
 
     fun answer(asVideo: Boolean = isVideoCall.value) {
-        val call = _currentCall.value ?: return
-        val incomingVideoState = call.details?.videoState ?: VideoProfile.STATE_AUDIO_ONLY
+        val calls = instance?.calls.orEmpty()
+        val activeCall = calls.firstOrNull { it.state == Call.STATE_ACTIVE }
+        val ringingCall = calls.firstOrNull { it.state == Call.STATE_RINGING } ?: _currentCall.value ?: return
+
+        if (activeCall != null && activeCall !== ringingCall) {
+            try {
+                activeCall.hold()
+            } catch (_: Exception) {
+            }
+        }
+
+        _currentCall.value = ringingCall
+        val incomingVideoState = ringingCall.details?.videoState ?: VideoProfile.STATE_AUDIO_ONLY
         val isVideo = asVideo || _isVideoCall.value || VideoProfile.isVideo(incomingVideoState)
         val targetVideoState = if (isVideo) {
             VideoProfile.STATE_BIDIRECTIONAL
@@ -79,12 +176,24 @@ object CallManager {
             _isVideoCall.value = true
             setSpeakerphone(true)
         }
-        call.answer(targetVideoState)
+        ringingCall.answer(targetVideoState)
     }
 
     fun answerAsAudioOnly() {
+        val calls = instance?.calls.orEmpty()
+        val activeCall = calls.firstOrNull { it.state == Call.STATE_ACTIVE }
+        val ringingCall = calls.firstOrNull { it.state == Call.STATE_RINGING } ?: _currentCall.value ?: return
+
+        if (activeCall != null && activeCall !== ringingCall) {
+            try {
+                activeCall.hold()
+            } catch (_: Exception) {
+            }
+        }
+
+        _currentCall.value = ringingCall
         _isVideoCall.value = false
-        _currentCall.value?.answer(VideoProfile.STATE_AUDIO_ONLY)
+        ringingCall.answer(VideoProfile.STATE_AUDIO_ONLY)
     }
 
     fun hangup() {
@@ -775,6 +884,7 @@ class AetherInCallService : InCallService() {
             val simInfo = com.aether.call.util.SimAccountResolver.resolveSimForActiveCall(this@AetherInCallService, call)
             CallBridge.simLabel.value = simInfo.displayLabel
             CallManager.syncVideoCallState(call)
+            CallManager.syncCallsList(calls)
             @Suppress("DEPRECATION")
             val state = call.state
             if (incomingOverlayShowing && state == Call.STATE_RINGING) {
@@ -789,6 +899,12 @@ class AetherInCallService : InCallService() {
             if (state != Call.STATE_DISCONNECTED && state != Call.STATE_DISCONNECTING) {
                 updateAndResolveCaller(call)
             }
+        }
+
+        override fun onConferenceableCallsChanged(call: Call, conferenceableCalls: List<Call>) {
+            super.onConferenceableCallsChanged(call, conferenceableCalls)
+            Log.d(ICS_TAG, "onConferenceableCallsChanged count=${conferenceableCalls.size}")
+            CallManager.syncCallsList(calls)
         }
 
         override fun onStateChanged(call: Call, state: Int) {
@@ -914,6 +1030,7 @@ class AetherInCallService : InCallService() {
         Log.d(ICS_TAG, "onCallAdded state=$state hasAccount=${call.details?.accountHandle != null}")
         CallManager.instance = this
         CallManager.updateCall(call)
+        CallManager.syncCallsList(calls)
         val simInfo = com.aether.call.util.SimAccountResolver.resolveSimForActiveCall(this, call)
         CallBridge.simLabel.value = simInfo.displayLabel
         CallManager.syncVideoCallState(call)
@@ -1005,6 +1122,16 @@ class AetherInCallService : InCallService() {
             if (CallManager.instance == this) {
                 CallManager.instance = null
             }
+        } else {
+            val remainingCall = calls.first()
+            CallManager.updateCall(remainingCall)
+            if (remainingCall.state == Call.STATE_HOLDING) {
+                try {
+                    remainingCall.unhold()
+                } catch (_: Exception) {
+                }
+            }
+            CallManager.syncCallsList(calls)
         }
     }
 

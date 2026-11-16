@@ -15,6 +15,7 @@ It combines the clean, edge-to-edge Apple iOS 18 Contact Poster in-call experien
 * ⚡ **2-Stage Staged Call History Loading**: Stage 1 queries past 7 days history instantly (< 5ms); Stage 2 loads older historical records asynchronously in the background.
 * 🔢 **Vertical T9 Predictive Dialpad Search**: Converted predictive T9 contact matches from `LazyRow` to a vertical `LazyColumn` above the keypad with full-width cards, high-res avatars, contact labels, and 1-tap green Call buttons.
 * ⚙️ **Compact & Productive Call Settings Redesign**: Redesigned settings into 5 clean, compact, category-header sections (`PROTECTION & SECURITY`, `APPEARANCE & DISPLAY`, `AUDIO & CALL CONTROLS`, `NETWORK & SIM SERVICES`, `SYSTEM & ABOUT`) with 18.dp rounded cards and inline productivity switches.
+* 👥 **Multi-Party Call & Conference Engine (`Call.conference()`)**: Native multi-party call management supporting 2+ active lines, Call Waiting, auto-holding active calls on answer, and automatic line unhold/resume when a call disconnects. Features interactive **"Merge calls"** (`Icons.Default.CallMerge`) and **"Swap"** (`Icons.Default.SwapCalls`) grid controls, invoking `primaryCall.conference(secondaryCall)` and `mergeConference()` to merge active lines into a carrier conference call (Jio, Airtel, Vodafone, T-Mobile, AT&T, Verizon).
 * 📹 **Carrier ViLTE Answer Stabilization**: Enhanced `AetherInCallService.answer(asVideo = true)` to unconditionally dispatch `VideoProfile.STATE_BIDIRECTIONAL` to Telecom and carrier IMS stack.
 
 ---

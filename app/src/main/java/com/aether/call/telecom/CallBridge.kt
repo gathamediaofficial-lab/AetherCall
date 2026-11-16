@@ -26,6 +26,15 @@ object CallBridge {
     val isHoldOn: StateFlow<Boolean> get() = CallManager.isOnHold
     val isRecording: StateFlow<Boolean> get() = CallRecordingManager.isRecording
 
+    val canMergeCalls: StateFlow<Boolean> get() = CallManager.canMergeCalls
+    val canSwapCalls: StateFlow<Boolean> get() = CallManager.canSwapCalls
+    val isConferenceCall: StateFlow<Boolean> get() = CallManager.isConferenceCall
+    val secondCallName: StateFlow<String?> get() = CallManager.secondCallName
+    val secondCallNumber: StateFlow<String?> get() = CallManager.secondCallNumber
+
+    fun mergeCalls() = CallManager.mergeCalls()
+    fun swapCalls() = CallManager.swapCalls()
+
     val callerName: MutableStateFlow<String> = MutableStateFlow("Unknown Caller")
     val callerNumber: MutableStateFlow<String> = MutableStateFlow("")
     val callerPhotoUri: MutableStateFlow<String?> = MutableStateFlow(null)

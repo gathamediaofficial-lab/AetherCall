@@ -55,6 +55,8 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
+import androidx.compose.material.icons.filled.CallMerge
+import androidx.compose.material.icons.filled.SwapCalls
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.CheckCircle
@@ -160,6 +162,13 @@ fun InCallScreen(
     onFlipCamera: () -> Unit = {},
     onRespondVideoUpgrade: (Boolean) -> Unit = {},
     onDtmfDigitPress: (Char) -> Unit,
+    canMergeCalls: Boolean = false,
+    canSwapCalls: Boolean = false,
+    isConferenceCall: Boolean = false,
+    secondCallName: String? = null,
+    secondCallNumber: String? = null,
+    onMergeCalls: () -> Unit = {},
+    onSwapCalls: () -> Unit = {},
     onEndCallClick: () -> Unit,
     onBlockAndReportSpam: (String, String) -> Unit = { _, _ -> },
     onCallAgainClick: ((String) -> Unit)? = null,
@@ -271,8 +280,12 @@ fun InCallScreen(
         isEnded = isEnded,
     )
 
-    val displayTitle = callerName.takeIf { it.isNotBlank() && it != callerNumber }
-        ?: callerNumber.ifBlank { "Unknown Caller" }
+    val displayTitle = if (isConferenceCall) {
+        "Conference call"
+    } else {
+        callerName.takeIf { it.isNotBlank() && it != callerNumber }
+            ?: callerNumber.ifBlank { "Unknown Caller" }
+    }
 
     Box(
         modifier = modifier
@@ -955,34 +968,61 @@ fun InCallScreen(
                                         onVideoToggle()
                                     },
                                 )
-                                OneUiFocusGridButton(
-                                    icon = Icons.Default.Pause,
-                                    label = if (isHoldOn) "Resume" else "Hold",
-                                    isActive = isHoldOn,
-                                    activeColor = Color(0xFFFBBF24),
-                                    enabled = !isDialing,
-                                    onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        onHoldToggle()
-                                    },
-                                )
-                                OneUiFocusGridButton(
-                                    icon = Icons.Default.Add,
-                                    label = "Add call",
-                                    isActive = false,
-                                    activeColor = Color(0xFF38BDF8),
-                                    onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        try {
-                                            context.startActivity(
-                                                Intent(Intent.ACTION_DIAL).apply {
-                                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                                },
-                                            )
-                                        } catch (_: Exception) {
-                                        }
-                                    },
-                                )
+                                if (canMergeCalls) {
+                                    OneUiFocusGridButton(
+                                        icon = Icons.Default.CallMerge,
+                                        label = "Merge calls",
+                                        isActive = true,
+                                        activeColor = Color(0xFF10B981),
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            onMergeCalls()
+                                        },
+                                    )
+                                } else {
+                                    OneUiFocusGridButton(
+                                        icon = Icons.Default.Pause,
+                                        label = if (isHoldOn) "Resume" else "Hold",
+                                        isActive = isHoldOn,
+                                        activeColor = Color(0xFFFBBF24),
+                                        enabled = !isDialing,
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            onHoldToggle()
+                                        },
+                                    )
+                                }
+
+                                if (canSwapCalls) {
+                                    OneUiFocusGridButton(
+                                        icon = Icons.Default.SwapCalls,
+                                        label = "Swap",
+                                        isActive = true,
+                                        activeColor = Color(0xFFFBBF24),
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            onSwapCalls()
+                                        },
+                                    )
+                                } else {
+                                    OneUiFocusGridButton(
+                                        icon = Icons.Default.Add,
+                                        label = "Add call",
+                                        isActive = false,
+                                        activeColor = Color(0xFF38BDF8),
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            try {
+                                                context.startActivity(
+                                                    Intent(Intent.ACTION_DIAL).apply {
+                                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                                    },
+                                                )
+                                            } catch (_: Exception) {
+                                            }
+                                        },
+                                    )
+                                }
                             }
 
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {

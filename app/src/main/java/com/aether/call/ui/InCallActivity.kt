@@ -341,6 +341,11 @@ fun InCallActivityContainer(
     val isSpeakerOn by CallBridge.isSpeakerOn.collectAsState()
     val isHoldOn by CallBridge.isHoldOn.collectAsState()
     val isRecording by CallBridge.isRecording.collectAsState()
+    val canMergeCalls by CallBridge.canMergeCalls.collectAsState()
+    val canSwapCalls by CallBridge.canSwapCalls.collectAsState()
+    val isConferenceCall by CallBridge.isConferenceCall.collectAsState()
+    val secondCallName by CallBridge.secondCallName.collectAsState()
+    val secondCallNumber by CallBridge.secondCallNumber.collectAsState()
     val isCarrierVideoCall by CallManager.isVideoCall.collectAsState()
     val isVideoUpgradePending by CallManager.isVideoUpgradePending.collectAsState()
     val canUpgradeToVideo by CallManager.canUpgradeToVideo.collectAsState()
@@ -561,6 +566,13 @@ fun InCallActivityContainer(
             isVideoCall = isVideoCall,
             isFrontCamera = isFrontCamera,
             incomingVideoUpgradeRequest = incomingVideoUpgradeRequest,
+            canMergeCalls = canMergeCalls,
+            canSwapCalls = canSwapCalls,
+            isConferenceCall = isConferenceCall,
+            secondCallName = secondCallName,
+            secondCallNumber = secondCallNumber,
+            onMergeCalls = { CallBridge.mergeCalls() },
+            onSwapCalls = { CallBridge.swapCalls() },
             onBindRemoteSurface = { surface -> CallManager.bindRemoteDisplaySurface(surface) },
             onBindPreviewSurface = { surface -> CallManager.bindLocalPreviewSurface(surface) },
             onFlipCamera = { CallManager.flipVideoCamera() },
