@@ -45,14 +45,17 @@ import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import com.aether.call.telecom.CallBridge
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -107,6 +110,7 @@ fun CarrierVideoCallScreen(
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
+    val isCnapVerified by CallBridge.isCnapVerified.collectAsState()
     var controlsVisible by remember { mutableStateOf(true) }
     var isScreenLocked by rememberSaveable { mutableStateOf(false) }
     var pipOffsetX by remember { mutableFloatStateOf(0f) }
@@ -356,6 +360,34 @@ fun CarrierVideoCallScreen(
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Normal,
                     )
+                }
+
+                if (isCnapVerified) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF10B981).copy(alpha = 0.16f),
+                        border = BorderStroke(0.8.dp, Color(0xFF10B981).copy(alpha = 0.4f)),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Verified,
+                                contentDescription = "Verified",
+                                tint = Color(0xFF10B981),
+                                modifier = Modifier.size(13.dp),
+                            )
+                            Text(
+                                text = "Network Verified (CNAP)",
+                                color = Color(0xFF10B981),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
                 }
             }
 

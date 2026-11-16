@@ -18,6 +18,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.telecom.Call
+import android.telecom.TelecomManager
 import android.telecom.VideoProfile
 import android.util.Rational
 import android.view.KeyEvent
@@ -426,12 +427,21 @@ fun InCallActivityContainer(
 
                 val resolved = CallerIdResolver.resolveCaller(context, targetNumber)
                 val matchedContact = ContactsRepository.findContactByNumber(context, targetNumber)
+                val cnapName = currentCall?.let { c ->
+                    val details = c.details
+                    if (details?.callerDisplayNamePresentation == TelecomManager.PRESENTATION_ALLOWED) {
+                        details.callerDisplayName?.trim()?.takeIf { name ->
+                            name.isNotBlank() && !name.equals("Unknown", ignoreCase = true)
+                        }
+                    } else null
+                }
 
-                val finalName = when {
-                    !poster?.customNickname.isNullOrBlank() -> poster!!.customNickname!!
-                    !matchedContact?.displayName.isNullOrBlank() -> matchedContact!!.displayName
-                    resolved.isSaved && resolved.displayName.isNotBlank() -> resolved.displayName
-                    else -> targetNumber
+                val (finalName, isCnap) = when {
+                    !poster?.customNickname.isNullOrBlank() -> poster!!.customNickname!! to false
+                    !matchedContact?.displayName.isNullOrBlank() -> matchedContact!!.displayName to false
+                    resolved.isSaved && resolved.displayName.isNotBlank() -> resolved.displayName to false
+                    cnapName != null -> cnapName to true
+                    else -> targetNumber to false
                 }
 
                 val finalPhoto = poster?.customPhotoUri
@@ -442,7 +452,7 @@ fun InCallActivityContainer(
                 withContext(Dispatchers.Main) {
                     contactName = finalName
                     posterPhotoUri = finalPhoto
-                    CallBridge.updateCallerIdentity(finalName, targetNumber, finalPhoto)
+                    CallBridge.updateCallerIdentity(finalName, targetNumber, finalPhoto, isCnap = isCnap)
                 }
             }
         }

@@ -734,6 +734,7 @@ object CallManager {
         isSpeaker.value = false
         isOnHold.value = false
         callDurationSeconds.value = 0L
+        CallBridge.resetIdentity()
     }
 }
 
@@ -822,22 +823,56 @@ class AetherInCallService : InCallService() {
         }
     }
 
+    private fun extractCnapDisplayName(call: Call?): String? {
+        val details = call?.details ?: return null
+        if (details.callerDisplayNamePresentation != TelecomManager.PRESENTATION_ALLOWED) {
+            return null
+        }
+        val rawName = details.callerDisplayName?.trim().orEmpty()
+        if (rawName.isBlank() || rawName.equals("Unknown", ignoreCase = true)) {
+            return null
+        }
+        val rawNumber = details.handle?.schemeSpecificPart.orEmpty()
+        if (PhoneNormalizer.normalizeDigits(rawName) == PhoneNormalizer.normalizeDigits(rawNumber) && rawName.length > 5) {
+            return null
+        }
+        return rawName
+    }
+
     private fun updateAndResolveCaller(call: Call) {
         val rawNumber = call.details?.handle?.schemeSpecificPart?.trim().orEmpty()
+        val cnapName = extractCnapDisplayName(call)
+
         if (rawNumber.isNotBlank()) {
             CallBridge.callerNumber.value = rawNumber
             if (CallBridge.callerName.value == "Unknown Caller" || CallBridge.callerName.value.isBlank()) {
-                CallBridge.callerName.value = rawNumber
+                if (cnapName != null) {
+                    CallBridge.callerName.value = cnapName
+                    CallBridge.isCnapVerified.value = true
+                } else {
+                    CallBridge.callerName.value = rawNumber
+                    CallBridge.isCnapVerified.value = false
+                }
             }
         }
         resolveJob?.cancel()
         resolveJob = serviceScope.launch(Dispatchers.IO) {
             val resolved = CallerIdResolver.resolveCaller(applicationContext, rawNumber)
+            val (finalName, isCnap) = when {
+                resolved.isSavedContact -> resolved.displayName to false
+                cnapName != null -> cnapName to true
+                else -> resolved.displayName to false
+            }
+
             CallBridge.updateCallerIdentity(
-                name = resolved.displayName,
+                name = finalName,
                 number = rawNumber,
                 photoUri = resolved.photoUri,
+                isCnap = isCnap,
             )
+
+            val displayResolved = resolved.copy(displayName = finalName)
+
             @Suppress("DEPRECATION")
             val currentState = call.state
             if (CallManager.currentCall.value == null ||
@@ -851,7 +886,7 @@ class AetherInCallService : InCallService() {
                 CallNotificationManager.showIncomingCallNotification(
                     this@AetherInCallService,
                     call,
-                    resolved,
+                    displayResolved,
                     overlayIsShowing = incomingOverlayShowing,
                 )
             } else if (
@@ -861,7 +896,7 @@ class AetherInCallService : InCallService() {
                 currentState == Call.STATE_ACTIVE ||
                 currentState == Call.STATE_HOLDING
             ) {
-                CallNotificationManager.showOngoingCallNotification(this@AetherInCallService, call, resolved)
+                CallNotificationManager.showOngoingCallNotification(this@AetherInCallService, call, displayResolved)
             }
         }
     }

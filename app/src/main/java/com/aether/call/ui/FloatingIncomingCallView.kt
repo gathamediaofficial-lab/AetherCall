@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -37,7 +38,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import com.aether.call.telecom.CallBridge
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -151,6 +154,7 @@ fun FloatingIncomingCallView(
 
                 // Caller Name & Number / SIM Badge
                 Column(modifier = Modifier.weight(1f)) {
+                    val isCnapVerified by CallBridge.isCnapVerified.collectAsState()
                     Text(
                         text = callerName,
                         color = Color.White,
@@ -162,11 +166,11 @@ fun FloatingIncomingCallView(
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = if (callerNumber.isNotBlank() && callerName != callerNumber) {
-                            "$callerNumber • $simLabel"
+                            if (isCnapVerified) "$callerNumber • Verified CNAP" else "$callerNumber • $simLabel"
                         } else {
                             simLabel
                         },
-                        color = Color(0xFF94A3B8),
+                        color = if (isCnapVerified) Color(0xFF10B981) else Color(0xFF94A3B8),
                         fontSize = 12.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,

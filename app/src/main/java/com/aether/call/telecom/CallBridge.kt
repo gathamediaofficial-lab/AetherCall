@@ -39,11 +39,25 @@ object CallBridge {
     val callerNumber: MutableStateFlow<String> = MutableStateFlow("")
     val callerPhotoUri: MutableStateFlow<String?> = MutableStateFlow(null)
     val simLabel: MutableStateFlow<String> = MutableStateFlow("IND-JIO")
+    val isCnapVerified: MutableStateFlow<Boolean> = MutableStateFlow(false)
 
-    fun updateCallerIdentity(name: String, number: String, photoUri: String? = null) {
+    fun updateCallerIdentity(
+        name: String,
+        number: String,
+        photoUri: String? = null,
+        isCnap: Boolean = false,
+    ) {
         if (name.isNotBlank()) callerName.value = name
         if (number.isNotBlank()) callerNumber.value = number
         callerPhotoUri.value = photoUri
+        isCnapVerified.value = isCnap
+    }
+
+    fun resetIdentity() {
+        callerName.value = "Unknown Caller"
+        callerNumber.value = ""
+        callerPhotoUri.value = null
+        isCnapVerified.value = false
     }
 
     fun answerCall(asVideo: Boolean = CallManager.isVideoCall.value) {

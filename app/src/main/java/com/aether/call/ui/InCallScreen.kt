@@ -77,6 +77,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.Voicemail
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
