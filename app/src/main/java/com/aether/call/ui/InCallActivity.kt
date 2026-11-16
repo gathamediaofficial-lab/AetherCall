@@ -23,7 +23,6 @@ import android.util.Rational
 import android.view.KeyEvent
 import android.view.WindowManager
 import android.widget.Toast
-import com.aether.call.util.showToast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -58,8 +57,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -81,10 +78,12 @@ import com.aether.call.telecom.CallManager
 import com.aether.call.telecom.CallNotificationManager
 import com.aether.call.telecom.CallerIdResolver
 import com.aether.call.util.PhoneNormalizer
+import com.aether.call.util.showToast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.util.Locale
@@ -227,7 +226,6 @@ class InCallActivity : ComponentActivity(), SensorEventListener {
         AudioVisualizerEngine.stop()
         releaseProximityWakeLock()
         proximityWakeLock = null
-        // Only cancel notifications if there is no active call in CallManager
         if (CallManager.currentCall.value == null) {
             CallNotificationManager.cancelNotification(this)
         }
@@ -281,9 +279,11 @@ class InCallActivity : ComponentActivity(), SensorEventListener {
             val isNear = distance < maxRange && distance < 5f
 
             val isSpeaker = CallBridge.isSpeakerOn.value
-            val isHeadset = CallBridge.isMuted.value
+            val isVideo = CallManager.isVideoCall.value ||
+                    CallManager.isVideoUpgradePending.value ||
+                    VideoProfile.isVideo(CallManager.currentCall.value?.details?.videoState ?: VideoProfile.STATE_AUDIO_ONLY)
 
-            if (isNear && !isSpeaker && !isHeadset) {
+            if (isNear && !isSpeaker && !isVideo) {
                 acquireProximityWakeLock()
             } else {
                 releaseProximityWakeLock()
@@ -310,7 +310,7 @@ class InCallActivity : ComponentActivity(), SensorEventListener {
 
     private fun acquireProximityWakeLock() {
         if (proximityWakeLock?.isHeld == false) {
-            proximityWakeLock?.acquire(10 * 60 * 1000L)
+            proximityWakeLock?.acquire(600_000L)
         }
     }
 
@@ -342,15 +342,16 @@ fun InCallActivityContainer(
     val isHoldOn by CallBridge.isHoldOn.collectAsState()
     val isRecording by CallBridge.isRecording.collectAsState()
     val isCarrierVideoCall by CallManager.isVideoCall.collectAsState()
+    val isVideoUpgradePending by CallManager.isVideoUpgradePending.collectAsState()
+    val canUpgradeToVideo by CallManager.canUpgradeToVideo.collectAsState()
     val isFrontCamera by CallManager.isFrontCamera.collectAsState()
     val incomingVideoUpgradeRequest by CallManager.incomingVideoUpgradeRequest.collectAsState()
-    val isVideoCall = isCarrierVideoCall || ((currentCall?.details?.videoState ?: 0) != VideoProfile.STATE_AUDIO_ONLY)
+    val isVideoCall = isCarrierVideoCall || VideoProfile.isVideo(currentCall?.details?.videoState ?: VideoProfile.STATE_AUDIO_ONLY)
     val simLabel by CallBridge.simLabel.collectAsState()
     val settingsManager = remember(context) { AppSettingsManager(context) }
     val userSettings by settingsManager.settingsFlow.collectAsState(initial = UserAppSettings())
     val coroutineScope = rememberCoroutineScope()
 
-    // Load live Quick Reply templates from Room
     val quickRepliesFlow = remember(context) {
         AetherDatabase.getDatabase(context).quickReplyDao().getAllTemplates().map { list ->
             list.map { it.messageText }.ifEmpty {
@@ -396,7 +397,6 @@ fun InCallActivityContainer(
         )
     }
 
-    // Keep synced with CallBridge updates
     LaunchedEffect(callerNameState) {
         if (callerNameState.isNotBlank() && callerNameState != "Unknown Caller" && callerNameState != handle) {
             contactName = callerNameState
@@ -409,7 +409,6 @@ fun InCallActivityContainer(
         }
     }
 
-    // Normalized 10-digit lookup across PhoneLookup, ContactsRepository, and ContactPosterDao
     LaunchedEffect(handle, currentCall) {
         val targetNumber = currentCall?.details?.handle?.schemeSpecificPart?.takeIf { it.isNotBlank() } ?: handle
         if (targetNumber.isNotBlank()) {
@@ -417,14 +416,10 @@ fun InCallActivityContainer(
                 val targetNorm = PhoneNormalizer.normalizeDigits(targetNumber)
                 val db = AetherDatabase.getDatabase(context)
 
-                // 1. Check custom poster by exact or normalized number
                 val poster = db.contactPosterDao().getPosterForNumber(targetNumber)
                     ?: if (targetNorm.isNotEmpty()) db.contactPosterDao().getPosterForNumber(targetNorm) else null
 
-                // 2. Fast PhoneLookup + normalized fallback
                 val resolved = CallerIdResolver.resolveCaller(context, targetNumber)
-
-                // 3. Full ContactsRepository check for callingCardPhotoUri & multi-number contacts
                 val matchedContact = ContactsRepository.findContactByNumber(context, targetNumber)
 
                 val finalName = when {
@@ -450,7 +445,6 @@ fun InCallActivityContainer(
 
     var elapsedSeconds by remember { mutableLongStateOf(0L) }
 
-    // Haptic vibration feedback on Call Answer or End
     LaunchedEffect(callState) {
         val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
@@ -477,7 +471,6 @@ fun InCallActivityContainer(
         }
     }
 
-    // 1-second coroutine ticker for active call duration
     LaunchedEffect(callState) {
         if (callState == Call.STATE_ACTIVE) {
             while (true) {
@@ -499,7 +492,6 @@ fun InCallActivityContainer(
         }
     }
 
-    // Show Ended Screen for 4.0 seconds before closing InCallActivity
     var hasSeenActiveOrRingingCall by remember { mutableStateOf(false) }
     LaunchedEffect(callState, currentCall) {
         if (currentCall != null && callState != Call.STATE_DISCONNECTED) {
@@ -520,7 +512,7 @@ fun InCallActivityContainer(
             durationText = durationText,
             posterPhotoUri = posterPhotoUri,
         )
-    } else if (isVideoCall || (wasVideoSession && (callState == Call.STATE_DISCONNECTING || callState == Call.STATE_DISCONNECTED))) {
+    } else if (isVideoCall || isVideoUpgradePending || (wasVideoSession && (callState == Call.STATE_DISCONNECTING || callState == Call.STATE_DISCONNECTED))) {
         CarrierVideoCallScreen(
             callState = callState,
             callerName = contactName,
@@ -531,6 +523,7 @@ fun InCallActivityContainer(
             isMuted = isMuted,
             isSpeakerOn = isSpeakerOn,
             isFrontCamera = isFrontCamera,
+            isVideoUpgradePending = isVideoUpgradePending,
             onBindRemoteSurface = { surface -> CallManager.bindRemoteDisplaySurface(surface) },
             onBindPreviewSurface = { surface -> CallManager.bindLocalPreviewSurface(surface) },
             onAnswerVideoClick = { CallManager.answer(asVideo = true) },
@@ -543,11 +536,12 @@ fun InCallActivityContainer(
             onMuteToggle = { CallBridge.toggleMute() },
             onSpeakerToggle = { CallBridge.toggleSpeaker() },
             onSwitchToVoice = { CallManager.toggleVideoCall() },
+            onCancelVideoUpgrade = { CallManager.cancelVideoUpgradeRequest() },
             onEndCallClick = { CallBridge.disconnectCall() },
             onCallAgainClick = {
                 wasVideoSession = false
                 if (handle.isNotBlank()) {
-                    com.aether.call.data.CallLogRepository.placeCarrierCall(context, handle)
+                    com.aether.call.data.CallLogRepository.placeCarrierVideoCall(context, handle)
                 }
             },
             onDismissEndedScreen = { onFinish() },
@@ -589,7 +583,13 @@ fun InCallActivityContainer(
             onHoldToggle = { CallBridge.toggleHold() },
             onRecordToggle = { CallBridge.toggleRecording(context) },
             onTransferRecordingClick = { CallBridge.transferLastRecording(context) },
-            onVideoToggle = { CallManager.toggleVideoCall() },
+            onVideoToggle = {
+                if (canUpgradeToVideo) {
+                    CallManager.toggleVideoCall()
+                } else {
+                    context.showToast("Video call is not supported on this network connection", Toast.LENGTH_SHORT)
+                }
+            },
             onDtmfDigitPress = { digit -> CallBridge.playDtmfTone(digit) },
             onEndCallClick = { CallBridge.disconnectCall() },
             onCallAgainClick = { numberToRedial ->
@@ -659,7 +659,7 @@ fun InCallActivityContainer(
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    activeSims.forEachIndexed { idx, sim ->
+                    activeSims.forEach { sim ->
                         Surface(
                             onClick = {
                                 CallManager.selectSimForWaitingCall(context, sim.slotIndex)
@@ -690,7 +690,7 @@ fun InCallActivityContainer(
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
                                     Text(
-                                        text = "SIM ${idx + 1} • ${sim.carrierName}",
+                                        text = "SIM ${sim.slotIndex + 1} • ${sim.carrierName}",
                                         color = Color.White,
                                         fontSize = 15.sp,
                                         fontWeight = FontWeight.SemiBold,

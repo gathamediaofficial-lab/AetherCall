@@ -6,16 +6,16 @@ It combines the clean, edge-to-edge Apple iOS 18 Contact Poster in-call experien
 
 ---
 
-## ✨ What's New in v1.1.2
+## ✨ What's New in v1.1.3
 
+* 🔒 **In-Call Screen Lock & Touch Protection**: Added a dedicated Touch Protection feature to both active Audio (`InCallScreen`) and Video (`CarrierVideoCallScreen`) call screens. Users can tap to lock the screen during a call to prevent accidental touches on Mute, Speaker, Hold, DTMF Keypad, Camera Flip, or End Call. Displays a prominent frosted Lock badge with a 1-tap **"Unlock screen"** button that automatically resets when the call ends.
+* 📹 **Hardened Carrier ViLTE HD Video Engine**:
+  * **Zero Process Camera Lock**: Replaced CameraX locks with direct `TextureView` surface binding (`CallManager.bindLocalPreviewSurface` & `bindRemoteDisplaySurface`), preventing recipient camera conflict crashes (`CAMERA_IN_USE`).
+  * **Mid-Call Audio-to-Video Upgrade**: Tracks `isVideoUpgradePending` with a 15-second auto-timeout, interactive **"Cancel Request"** control, and carrier capability checks (`CAPABILITY_SUPPORTS_VT_LOCAL_BIDIRECTIONAL`).
+  * **Carrier-Compliant VideoProfile Dispatch**: Formats `VideoProfile(VideoProfile.STATE_BIDIRECTIONAL)` requests without `QUALITY_HIGH` flags that cause Jio/Airtel/Samsung IMS stack rejections.
 * 🎨 **Active Light, Dark, and System Theme Controls**: Added full theme controls under **Settings → App theme**. Users can toggle anytime between **System default** (follows Android device theme), **Light mode** (clean One UI light theme), and **Dark mode** (AMOLED dark background), with instant UI re-theming and dynamic edge-to-edge system bar contrast adaptation.
 * 🔔 **OEM Ringtone & Vibration Engine (`CallRingtonePlayer`)**: Dedicated incoming call audio and haptic engine supporting default/custom ringtones, repeating vibration patterns, flip-to-silence gestures, and hardware volume key silencing—without mutating device-wide system ringer settings.
 * ⚡ **Thread-Safe UI & Async Protection (`ToastUtils`)**: Safe Toast dispatcher ensuring all status alerts across background coroutines and telephony workers post seamlessly on the Main UI thread.
-* 🍎 **Pure Apple iOS 18 Full-Screen Call Interface**: Full-bleed edge-to-edge Contact Posters with multi-stop vertical readability scrims or sleek dark ambient gradients with bold top-centered typography.
-* 📹 **Complete 3-Stage Carrier HD Video Calling (ViLTE / IMS)**:
-  * **Incoming Video Call Screen (`STATE_RINGING`)**: Live local camera preview with options to Decline, Answer as Voice Only, or Accept Video.
-  * **Active Video Call Screen (`STATE_ACTIVE`)**: Full-screen remote peer video stream, draggable Picture-in-Picture (PiP) self-view with 1-tap camera flip, and frosted controls.
-  * **4-Second Ended Call Summary (`STATE_DISCONNECTED`)**: Post-call summary screen showing call duration with instant Call Again or Done actions.
 * 🛡️ **Hardened Samsung One UI & OEM Call Ownership**: Unified foreground service notification binding (`ID = 1001`) with dual-channel quiet/high-importance routing (`aether_telecom_channel_v3_silent` + `aether_call_quiet_v2`) to eliminate double ringtones and prevent native OEM dialers from hijacking active calls.
 * 📶 **Precision Dual-SIM Carrier Detection**: Powered by `SimAccountResolver`, Aether Call cross-matches `TelecomManager` `PhoneAccountHandle` labels, ICCIDs, subscription IDs, and physical slot indices (`SIM 1 • Jio`, `SIM 2 • Airtel`) with full "Ask every time" (`STATE_SELECT_PHONE_ACCOUNT`) support.
 
@@ -23,7 +23,8 @@ It combines the clean, edge-to-edge Apple iOS 18 Contact Poster in-call experien
 
 ## 🌟 Core Features
 
-### 1. Advanced In-Call Experience & Themes
+### 1. Advanced In-Call Experience & Security
+* **In-Call Touch Protection**: Lock active audio and video call screens with 1 tap to eliminate accidental in-call touches.
 * **App-Wide Theme Control**: Live selection between **Light Mode**, **Dark Mode**, and **System Default** directly from Settings.
 * **Dual Incoming Call Layouts**: Switch anytime in Settings between iOS Style (*"Slide to Answer"*) with shimmer track and One UI Style (*"Dual Action Buttons"*).
 * **Built-In Call Recording**: Record calls locally in high-clarity `.m4a` format directly into public device storage (`Music/Aether Call Recordings` via Android MediaStore) with instant playback and sharing.
@@ -58,7 +59,7 @@ Aether Call is built on a strict **Zero Data Collection** policy:
 ## 📥 Installation & Setup Guide (Android 8.0 – Android 15+)
 
 1. **Download the APK**:
-   Download the latest signed release APK (`AetherCall-v1.1.2.apk`) from the GitHub Releases page.
+   Download the latest signed release APK (`AetherCall-v1.1.3.apk`) from the GitHub Releases page.
 
 2. **Unlock Restricted Settings (Android 13 / 14 / 15+ Users)**:
    Because the APK is installed directly from GitHub outside the Google Play Store, Android 13+ applies Enhanced Confirmation Mode:

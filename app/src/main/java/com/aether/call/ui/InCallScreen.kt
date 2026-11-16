@@ -25,6 +25,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -61,6 +62,8 @@ import androidx.compose.material.icons.filled.Dialpad
 import androidx.compose.material.icons.filled.Hearing
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.MoreVert
@@ -84,6 +87,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -166,8 +170,10 @@ fun InCallScreen(
     val isEnded = callState == Call.STATE_DISCONNECTED || callState == Call.STATE_DISCONNECTING
     val isSlideIncomingStyle = incomingCallLayoutStyle.equals("SLIDE_TO_ANSWER", ignoreCase = true)
 
-    // Switch to full-screen WhatsApp/Snapchat Carrier Video UI when video mode is active
-    if (isVideoCall) {
+    val isVideoUpgradePending by CallManager.isVideoUpgradePending.collectAsState()
+
+    // Switch to full-screen WhatsApp/Snapchat Carrier Video UI when video mode or pending video upgrade is active
+    if (isVideoCall || isVideoUpgradePending) {
         CarrierVideoCallScreen(
             callState = callState,
             callerName = callerName,
@@ -178,6 +184,7 @@ fun InCallScreen(
             isMuted = isMuted,
             isSpeakerOn = isSpeakerOn,
             isFrontCamera = isFrontCamera,
+            isVideoUpgradePending = isVideoUpgradePending,
             onBindRemoteSurface = onBindRemoteSurface,
             onBindPreviewSurface = onBindPreviewSurface,
             onAnswerVideoClick = onAnswerClick,
@@ -187,6 +194,7 @@ fun InCallScreen(
             onMuteToggle = onMuteToggle,
             onSpeakerToggle = onSpeakerToggle,
             onSwitchToVoice = onVideoToggle,
+            onCancelVideoUpgrade = { CallManager.cancelVideoUpgradeRequest() },
             onEndCallClick = onEndCallClick,
             onCallAgainClick = { onCallAgainClick?.invoke(callerNumber.ifBlank { callerName }) },
             onDismissEndedScreen = { onDismissEndedScreen?.invoke() },
@@ -200,6 +208,13 @@ fun InCallScreen(
     var showOverflowMenu by remember { mutableStateOf(false) }
     var showCallerInfoDialog by remember { mutableStateOf(false) }
     var showBgPickerSheet by remember { mutableStateOf(false) }
+    var isScreenLocked by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(callState) {
+        if (isEnded) {
+            isScreenLocked = false
+        }
+    }
 
     var activeThemeId by remember(backgroundTheme) { mutableStateOf(backgroundTheme.ifBlank { "GRAD_AUTO_AVATAR" }) }
     var activeCustomUri by remember(customCallBackgroundUri) { mutableStateOf(customCallBackgroundUri) }
@@ -461,6 +476,17 @@ fun InCallScreen(
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        IconButton(onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            isScreenLocked = true
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.LockOpen,
+                                contentDescription = "Lock touch protection",
+                                tint = Color.White,
+                            )
+                        }
+
                         IconButton(onClick = { showBgPickerSheet = true }) {
                             Icon(
                                 imageVector = Icons.Default.Palette,
@@ -483,6 +509,14 @@ fun InCallScreen(
                                 onDismissRequest = { showOverflowMenu = false },
                                 modifier = Modifier.background(Color(0xFF25272C)),
                             ) {
+                                DropdownMenuItem(
+                                    text = { Text("Lock screen touch protection", color = Color.White) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        isScreenLocked = true
+                                    },
+                                )
                                 DropdownMenuItem(
                                     text = {
                                         Text(
@@ -827,7 +861,11 @@ fun InCallScreen(
                                     icon = Icons.Default.Videocam,
                                     label = "Video call",
                                     bgColor = Color(0xFF8B5CF6),
-                                    onClick = { onCallAgainClick?.invoke(callerNumber) },
+                                    onClick = {
+                                        if (callerNumber.isNotBlank()) {
+                                            com.aether.call.data.CallLogRepository.placeCarrierVideoCall(context, callerNumber)
+                                        }
+                                    },
                                 )
                             }
                         }
@@ -964,6 +1002,94 @@ fun InCallScreen(
                             Icon(Icons.Default.CallEnd, contentDescription = "End Call", tint = Color.White, modifier = Modifier.size(26.dp))
                             Spacer(modifier = Modifier.width(10.dp))
                             Text("End call", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Touch Protection / Screen Lock Full-Screen Overlay for Audio Calls
+        if (isScreenLocked && !isEnded) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.88f))
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null,
+                    ) {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.padding(24.dp),
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF1E2024),
+                        border = BorderStroke(1.dp, Color(0xFF10B981)),
+                        modifier = Modifier.size(84.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = "Locked",
+                                tint = Color(0xFF10B981),
+                                modifier = Modifier.size(38.dp),
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    Text(
+                        text = "Touch protection enabled",
+                        color = Color.White,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "Screen is locked to prevent accidental touches",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center,
+                    )
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    Surface(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            isScreenLocked = false
+                        },
+                        shape = RoundedCornerShape(28.dp),
+                        color = Color(0xFF10B981),
+                        modifier = Modifier.height(54.dp),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(horizontal = 28.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LockOpen,
+                                contentDescription = null,
+                                tint = Color.Black,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Unlock screen",
+                                color = Color.Black,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
                         }
                     }
                 }

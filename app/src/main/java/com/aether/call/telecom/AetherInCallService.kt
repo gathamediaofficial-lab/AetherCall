@@ -6,6 +6,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.Build
@@ -15,12 +17,13 @@ import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import android.telecom.Call
 import android.telecom.CallAudioState
+import android.telecom.Connection
 import android.telecom.DisconnectCause
 import android.telecom.InCallService
-import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
 import android.telecom.VideoProfile
 import android.util.Log
+import android.view.Surface
 import com.aether.call.data.AppSettingsManager
 import com.aether.call.ui.InCallActivity
 import com.aether.call.util.PhoneNormalizer
@@ -71,12 +74,16 @@ object CallManager {
         } else {
             VideoProfile.STATE_AUDIO_ONLY
         }
+        if (VideoProfile.isVideo(targetVideoState)) {
+            _isVideoCall.value = true
+            setSpeakerphone(true)
+        }
         call.answer(targetVideoState)
     }
 
     fun answerAsAudioOnly() {
-        _currentCall.value?.answer(VideoProfile.STATE_AUDIO_ONLY)
         _isVideoCall.value = false
+        _currentCall.value?.answer(VideoProfile.STATE_AUDIO_ONLY)
     }
 
     fun hangup() {
@@ -143,9 +150,37 @@ object CallManager {
         CallRecordingManager.shareLastRecording(context)
     }
 
+    fun resolveCameraId(front: Boolean): String {
+        val context = instance ?: return if (front) "1" else "0"
+        try {
+            val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
+                ?: return if (front) "1" else "0"
+            val targetFacing = if (front) {
+                CameraCharacteristics.LENS_FACING_FRONT
+            } else {
+                CameraCharacteristics.LENS_FACING_BACK
+            }
+            for (id in cameraManager.cameraIdList) {
+                val characteristics = cameraManager.getCameraCharacteristics(id)
+                val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
+                if (facing == targetFacing) {
+                    return id
+                }
+            }
+        } catch (_: Exception) {
+        }
+        return if (front) "1" else "0"
+    }
+
     // --- CARRIER VIDEO CALL (ViLTE / IMS) STATE & CONTROLS ---
     private val _isVideoCall = MutableStateFlow(false)
     val isVideoCall: StateFlow<Boolean> = _isVideoCall.asStateFlow()
+
+    private val _isVideoUpgradePending = MutableStateFlow(false)
+    val isVideoUpgradePending: StateFlow<Boolean> = _isVideoUpgradePending.asStateFlow()
+
+    private var upgradeTimeoutJob: Job? = null
+    private var outgoingGraceJob: Job? = null
 
     private val _canUpgradeToVideo = MutableStateFlow(false)
     val canUpgradeToVideo: StateFlow<Boolean> = _canUpgradeToVideo.asStateFlow()
@@ -154,11 +189,15 @@ object CallManager {
     val videoDowngradedNotice: StateFlow<String?> = _videoDowngradedNotice.asStateFlow()
 
     private var requestedOutgoingVideo = false
+    private var currentlyBoundCameraId: String? = null
+    private var registeredVideoCall: InCallService.VideoCall? = null
+    private var cachedPreviewSurface: Surface? = null
+    private var cachedDisplaySurface: Surface? = null
 
     fun prepareOutgoingVideoCall() {
         requestedOutgoingVideo = true
         _isFrontCamera.value = true
-        // Do NOT force _isVideoCall = true yet; wait for Telecom's actual videoState in syncVideoCallState()
+        _isVideoCall.value = true
     }
 
     fun clearVideoDowngradedNotice() {
@@ -177,10 +216,13 @@ object CallManager {
     private val videoCallCallback = object : InCallService.VideoCall.Callback() {
         override fun onSessionModifyRequestReceived(videoProfile: VideoProfile?) {
             val requestedState = videoProfile?.videoState ?: VideoProfile.STATE_AUDIO_ONLY
+            Log.d(ICS_TAG, "onSessionModifyRequestReceived videoState=$requestedState")
             if (VideoProfile.isVideo(requestedState)) {
                 _incomingVideoUpgradeRequest.value = true
             } else {
+                _isVideoUpgradePending.value = false
                 _isVideoCall.value = false
+                currentlyBoundCameraId = null
             }
         }
 
@@ -189,13 +231,38 @@ object CallManager {
             requestedProfile: VideoProfile?,
             responseProfile: VideoProfile?,
         ) {
-            if (status == android.telecom.Connection.VideoProvider.SESSION_MODIFY_REQUEST_SUCCESS) {
-                val newState = responseProfile?.videoState ?: VideoProfile.STATE_AUDIO_ONLY
-                _isVideoCall.value = VideoProfile.isVideo(newState)
+            Log.d(
+                ICS_TAG,
+                "onSessionModifyResponseReceived status=$status req=${requestedProfile?.videoState} resp=${responseProfile?.videoState}",
+            )
+            upgradeTimeoutJob?.cancel()
+            upgradeTimeoutJob = null
+            _isVideoUpgradePending.value = false
+
+            val isSuccess = status == Connection.VideoProvider.SESSION_MODIFY_REQUEST_SUCCESS &&
+                    VideoProfile.isVideo(responseProfile?.videoState ?: VideoProfile.STATE_AUDIO_ONLY)
+
+            if (isSuccess) {
+                _isVideoCall.value = true
+                setSpeakerphone(true)
+                bindImsCameraAndSurfacesIfNeeded(_currentCall.value?.videoCall)
+            } else {
+                val currentTelecomVideo = VideoProfile.isVideo(
+                    _currentCall.value?.details?.videoState ?: VideoProfile.STATE_AUDIO_ONLY,
+                )
+                _isVideoCall.value = currentTelecomVideo
+                if (!currentTelecomVideo) {
+                    currentlyBoundCameraId = null
+                    if (VideoProfile.isVideo(requestedProfile?.videoState ?: VideoProfile.STATE_AUDIO_ONLY)) {
+                        _videoDowngradedNotice.value = "Video request declined or unsupported by recipient carrier"
+                    }
+                }
             }
         }
 
-        override fun onCallSessionEvent(event: Int) {}
+        override fun onCallSessionEvent(event: Int) {
+            Log.d(ICS_TAG, "onCallSessionEvent event=$event")
+        }
 
         override fun onPeerDimensionsChanged(width: Int, height: Int) {
             if (width > 0 && height > 0) {
@@ -210,13 +277,40 @@ object CallManager {
         ) {}
     }
 
+    private fun bindImsCameraAndSurfacesIfNeeded(videoCall: InCallService.VideoCall?) {
+        if (videoCall == null) return
+        try {
+            val targetCam = resolveCameraId(_isFrontCamera.value)
+            if (currentlyBoundCameraId != targetCam) {
+                videoCall.setCamera(targetCam)
+                currentlyBoundCameraId = targetCam
+                videoCall.requestCameraCapabilities()
+            }
+            cachedPreviewSurface?.takeIf { it.isValid }?.let {
+                videoCall.setPreviewSurface(it)
+            }
+            cachedDisplaySurface?.takeIf { it.isValid }?.let {
+                videoCall.setDisplaySurface(it)
+            }
+        } catch (e: Exception) {
+            Log.e(ICS_TAG, "bindImsCameraAndSurfacesIfNeeded failed", e)
+        }
+    }
+
     /**
-     * Strictly mirrors Telecom's real Call.Details videoState and IMS capabilities.
-     * Prevents fake video UI when cross-operator calls (e.g. Jio -> Airtel) connect as audio-only.
+     * Synchronizes Telecom's real Call.Details videoState and IMS VideoCall instance
+     * without prematurely killing outgoing or mid-call upgrade requests.
      */
     fun syncVideoCallState(call: Call?) {
         if (call == null) {
             requestedOutgoingVideo = false
+            currentlyBoundCameraId = null
+            registeredVideoCall = null
+            upgradeTimeoutJob?.cancel()
+            upgradeTimeoutJob = null
+            outgoingGraceJob?.cancel()
+            outgoingGraceJob = null
+            _isVideoUpgradePending.value = false
             _isVideoCall.value = false
             _canUpgradeToVideo.value = false
             _incomingVideoUpgradeRequest.value = false
@@ -227,86 +321,177 @@ object CallManager {
         val vState = details?.videoState ?: VideoProfile.STATE_AUDIO_ONLY
         @Suppress("DEPRECATION")
         val cState = call.state
+        val videoCallObj = call.videoCall
 
-        // Check real-time IMS ViLTE capabilities for both local SIM and remote recipient
-        val localVtSupported = details?.can(Call.Details.CAPABILITY_SUPPORTS_VT_LOCAL_BIDIRECTIONAL) == true
-        val remoteVtSupported = details?.can(Call.Details.CAPABILITY_SUPPORTS_VT_REMOTE_BIDIRECTIONAL) == true
-        _canUpgradeToVideo.value = localVtSupported && remoteVtSupported
+        if (videoCallObj != null && videoCallObj !== registeredVideoCall) {
+            registeredVideoCall = videoCallObj
+            try {
+                videoCallObj.registerCallback(videoCallCallback)
+            } catch (e: Exception) {
+                Log.e(ICS_TAG, "registerCallback failed", e)
+            }
+        }
+
+        val localVtSupported = details?.can(Call.Details.CAPABILITY_SUPPORTS_VT_LOCAL_BIDIRECTIONAL) == true ||
+                details?.can(Call.Details.CAPABILITY_SUPPORTS_VT_LOCAL_TX) == true
+        val remoteVtSupported = details?.can(Call.Details.CAPABILITY_SUPPORTS_VT_REMOTE_BIDIRECTIONAL) == true ||
+                details?.can(Call.Details.CAPABILITY_SUPPORTS_VT_REMOTE_RX) == true
+
+        // Allow upgrade button only when both sides report VT support (same operator IMS)
+        _canUpgradeToVideo.value = localVtSupported && remoteVtSupported && videoCallObj != null
 
         val telecomIsVideo = VideoProfile.isVideo(vState)
 
-        // Only allow video UI while dialing if Telecom actually initiated a video session
-        val activeVideo = when {
+        when {
             telecomIsVideo -> {
+                // Carrier confirmed live video session
                 requestedOutgoingVideo = false
-                true
-            }
-            // If user requested video, only show dialing video preview while STATE_DIALING/CONNECTING
-            // AND local SIM supports video; once STATE_ACTIVE hits without videoState, drop immediately to audio!
-            requestedOutgoingVideo &&
-                (cState == Call.STATE_DIALING || cState == Call.STATE_CONNECTING) &&
-                localVtSupported -> {
-                true
-            }
-            else -> {
-                if (requestedOutgoingVideo && cState == Call.STATE_ACTIVE && !telecomIsVideo) {
-                    requestedOutgoingVideo = false
-                    _videoDowngradedNotice.value = "Video call unavailable on recipient network — connected via voice"
+                outgoingGraceJob?.cancel()
+                outgoingGraceJob = null
+                upgradeTimeoutJob?.cancel()
+                upgradeTimeoutJob = null
+                _isVideoUpgradePending.value = false
+                _isVideoCall.value = true
+                if (!isSpeaker.value) {
+                    setSpeakerphone(true)
                 }
-                false
+                bindImsCameraAndSurfacesIfNeeded(videoCallObj)
             }
-        }
 
-        _isVideoCall.value = activeVideo
-        if (activeVideo && !isSpeaker.value) {
-            setSpeakerphone(true)
-        }
-
-        try {
-            call.videoCall?.registerCallback(videoCallCallback)
-            if (activeVideo) {
-                val camId = if (_isFrontCamera.value) "1" else "0"
-                call.videoCall?.setCamera(camId)
+            _isVideoUpgradePending.value -> {
+                // Mid-call upgrade request is currently waiting for recipient/IMS response.
+                // Do NOT overwrite _isVideoCall to false here!
+                _isVideoCall.value = true
+                bindImsCameraAndSurfacesIfNeeded(videoCallObj)
             }
-        } catch (_: Exception) {
+
+            requestedOutgoingVideo && (
+                    cState == Call.STATE_SELECT_PHONE_ACCOUNT ||
+                            cState == Call.STATE_DIALING ||
+                            cState == Call.STATE_CONNECTING
+                    ) -> {
+                // Outgoing video call is still ringing/connecting (note: localVtSupported is often
+                // not populated until STATE_ACTIVE on Jio/Airtel, so do not gate dialing on it!)
+                _isVideoCall.value = true
+                if (!isSpeaker.value) {
+                    setSpeakerphone(true)
+                }
+                bindImsCameraAndSurfacesIfNeeded(videoCallObj)
+            }
+
+            requestedOutgoingVideo && cState == Call.STATE_ACTIVE -> {
+                // Call just answered! On Samsung/Qualcomm IMS, videoState can take 300-800ms after
+                // STATE_ACTIVE to flip to STATE_BIDIRECTIONAL, OR if the carrier downgraded to voice,
+                // we send an immediate upgrade request if supported, otherwise fall back after 1.5s.
+                _isVideoCall.value = true
+                bindImsCameraAndSurfacesIfNeeded(videoCallObj)
+                if (outgoingGraceJob == null) {
+                    outgoingGraceJob = managerScope.launch {
+                        // If videoCallObj exists and both sides support VT, nudge IMS to bidirectional
+                        if (videoCallObj != null && localVtSupported && remoteVtSupported) {
+                            try {
+                                videoCallObj.sendSessionModifyRequest(VideoProfile(VideoProfile.STATE_BIDIRECTIONAL))
+                            } catch (_: Exception) {
+                            }
+                        }
+                        delay(1500L)
+                        val latestCall = _currentCall.value
+                        val nowVideo = VideoProfile.isVideo(
+                            latestCall?.details?.videoState ?: VideoProfile.STATE_AUDIO_ONLY,
+                        )
+                        requestedOutgoingVideo = false
+                        outgoingGraceJob = null
+                        if (!nowVideo && !_isVideoUpgradePending.value) {
+                            _isVideoCall.value = false
+                            currentlyBoundCameraId = null
+                            _videoDowngradedNotice.value =
+                                "Recipient network does not support carrier video — connected via voice"
+                        }
+                    }
+                }
+            }
+
+            else -> {
+                _isVideoCall.value = false
+                currentlyBoundCameraId = null
+            }
         }
     }
 
     fun toggleVideoCall() {
         val call = _currentCall.value ?: return
         val videoCall = call.videoCall
-        val currentlyVideo = _isVideoCall.value
+        val telecomIsVideo = VideoProfile.isVideo(call.details?.videoState ?: VideoProfile.STATE_AUDIO_ONLY)
 
-        if (!currentlyVideo) {
-            _isVideoCall.value = true
+        if (!telecomIsVideo && !_isVideoUpgradePending.value) {
+            if (videoCall == null || !_canUpgradeToVideo.value) {
+                _videoDowngradedNotice.value =
+                    "Carrier video call is only supported between compatible VoLTE/ViLTE networks"
+                return
+            }
+
             setSpeakerphone(true)
+            _isVideoUpgradePending.value = true
+            _isVideoCall.value = true
+
             try {
-                val camId = if (_isFrontCamera.value) "1" else "0"
-                videoCall?.setCamera(camId)
-                videoCall?.sendSessionModifyRequest(
-                    VideoProfile(
-                        VideoProfile.STATE_BIDIRECTIONAL,
-                        VideoProfile.QUALITY_HIGH,
-                    ),
-                )
-            } catch (_: Exception) {
+                videoCall.registerCallback(videoCallCallback)
+                registeredVideoCall = videoCall
+                val camId = resolveCameraId(_isFrontCamera.value)
+                videoCall.setCamera(camId)
+                currentlyBoundCameraId = camId
+                cachedPreviewSurface?.takeIf { it.isValid }?.let {
+                    videoCall.setPreviewSurface(it)
+                }
+                videoCall.requestCameraCapabilities()
+                videoCall.sendSessionModifyRequest(VideoProfile(VideoProfile.STATE_BIDIRECTIONAL))
+                Log.d(ICS_TAG, "Sent mid-call ViLTE upgrade request (STATE_BIDIRECTIONAL)")
+            } catch (e: Exception) {
+                Log.e(ICS_TAG, "toggleVideoCall failed", e)
+                _isVideoUpgradePending.value = false
+                _isVideoCall.value = false
+                _videoDowngradedNotice.value = "Unable to start carrier video call"
+                return
+            }
+
+            upgradeTimeoutJob?.cancel()
+            upgradeTimeoutJob = managerScope.launch {
+                delay(15000L)
+                if (_isVideoUpgradePending.value) {
+                    _isVideoUpgradePending.value = false
+                    _isVideoCall.value = false
+                    currentlyBoundCameraId = null
+                    _videoDowngradedNotice.value = "Video call request timed out"
+                }
             }
         } else {
-            _isVideoCall.value = false
-            try {
-                videoCall?.setCamera(null)
-                videoCall?.setPreviewSurface(null)
-                videoCall?.setDisplaySurface(null)
-                videoCall?.sendSessionModifyRequest(
-                    VideoProfile(VideoProfile.STATE_AUDIO_ONLY),
-                )
-            } catch (_: Exception) {
-            }
+            cancelVideoUpgradeRequest()
+        }
+    }
+
+    fun cancelVideoUpgradeRequest() {
+        upgradeTimeoutJob?.cancel()
+        upgradeTimeoutJob = null
+        outgoingGraceJob?.cancel()
+        outgoingGraceJob = null
+        requestedOutgoingVideo = false
+        _isVideoUpgradePending.value = false
+        _isVideoCall.value = false
+        currentlyBoundCameraId = null
+        try {
+            val videoCall = _currentCall.value?.videoCall
+            videoCall?.setPreviewSurface(null)
+            videoCall?.setDisplaySurface(null)
+            videoCall?.setCamera(null)
+            videoCall?.sendSessionModifyRequest(VideoProfile(VideoProfile.STATE_AUDIO_ONLY))
+        } catch (_: Exception) {
         }
     }
 
     fun respondToVideoUpgradeRequest(accept: Boolean) {
         val call = _currentCall.value ?: return
+        upgradeTimeoutJob?.cancel()
+        upgradeTimeoutJob = null
         _incomingVideoUpgradeRequest.value = false
         val targetState = if (accept) {
             _isVideoCall.value = true
@@ -317,7 +502,7 @@ object CallManager {
         }
         try {
             if (accept) {
-                call.videoCall?.setCamera(if (_isFrontCamera.value) "1" else "0")
+                bindImsCameraAndSurfacesIfNeeded(call.videoCall)
             }
             call.videoCall?.sendSessionModifyResponse(VideoProfile(targetState))
         } catch (_: Exception) {
@@ -327,28 +512,40 @@ object CallManager {
     fun flipVideoCamera() {
         val nextFront = !_isFrontCamera.value
         _isFrontCamera.value = nextFront
-        val camId = if (nextFront) "1" else "0"
+        val camId = resolveCameraId(nextFront)
         try {
-            _currentCall.value?.videoCall?.setCamera(camId)
+            _currentCall.value?.videoCall?.let { vc ->
+                vc.setCamera(camId)
+                currentlyBoundCameraId = camId
+                vc.requestCameraCapabilities()
+            }
         } catch (_: Exception) {
         }
     }
 
-    fun bindRemoteDisplaySurface(surface: android.view.Surface?) {
+    fun bindRemoteDisplaySurface(surface: Surface?) {
+        cachedDisplaySurface = surface
         try {
             _currentCall.value?.videoCall?.setDisplaySurface(surface)
         } catch (_: Exception) {
         }
     }
 
-    fun bindLocalPreviewSurface(surface: android.view.Surface?) {
+    fun bindLocalPreviewSurface(surface: Surface?) {
+        cachedPreviewSurface = surface
         try {
             val videoCall = _currentCall.value?.videoCall ?: return
-            if (surface != null) {
-                val camId = if (_isFrontCamera.value) "1" else "0"
-                videoCall.setCamera(camId)
+            if (surface != null && surface.isValid) {
+                val camId = resolveCameraId(_isFrontCamera.value)
+                if (currentlyBoundCameraId != camId) {
+                    videoCall.setCamera(camId)
+                    currentlyBoundCameraId = camId
+                }
+                videoCall.setPreviewSurface(surface)
+                videoCall.requestCameraCapabilities()
+            } else {
+                videoCall.setPreviewSurface(null)
             }
-            videoCall.setPreviewSurface(surface)
         } catch (_: Exception) {
         }
     }
@@ -410,9 +607,19 @@ object CallManager {
 
     private fun resetStates() {
         requestedOutgoingVideo = false
+        currentlyBoundCameraId = null
+        registeredVideoCall = null
+        cachedPreviewSurface = null
+        cachedDisplaySurface = null
+        upgradeTimeoutJob?.cancel()
+        upgradeTimeoutJob = null
+        outgoingGraceJob?.cancel()
+        outgoingGraceJob = null
+        _isVideoUpgradePending.value = false
         _isVideoCall.value = false
         _canUpgradeToVideo.value = false
         _videoDowngradedNotice.value = null
+        _incomingVideoUpgradeRequest.value = false
         isMuted.value = false
         isSpeaker.value = false
         isOnHold.value = false
@@ -587,6 +794,7 @@ class AetherInCallService : InCallService() {
             super.onStateChanged(call, state)
             Log.d(ICS_TAG, "onStateChanged state=$state")
             CallManager.updateState(state)
+            CallManager.syncVideoCallState(call)
             val number = call.details?.handle?.schemeSpecificPart.orEmpty()
             val resolved = getFastResolvedCaller(number)
 
@@ -737,10 +945,8 @@ class AetherInCallService : InCallService() {
             Call.STATE_RINGING -> {
                 wasIncomingRinging = true
                 wasAnswered = false
-                // 1. Immediately claim foreground notification & UI synchronously (< 5ms)
                 handleIncomingRinging(call, number, initialResolved)
 
-                // 2. Resolve contact on IO thread FIRST, then check blocklist so saved contacts are never rejected!
                 serviceScope.launch(Dispatchers.IO) {
                     val fullResolved = CallerIdResolver.resolveCaller(applicationContext, number)
                     val settings = AppSettingsManager(this@AetherInCallService).settingsFlow.first()
