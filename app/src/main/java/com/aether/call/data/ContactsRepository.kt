@@ -17,6 +17,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
@@ -376,9 +377,16 @@ object ContactsRepository {
             }
         } catch (_: Exception) {}
 
+        val allPostersMap = try {
+            posterDao.getAllPosters().associateBy { PhoneNormalizer.normalizeDigits(it.phoneNumber) }
+        } catch (_: Exception) {
+            emptyMap()
+        }
+
         val resultList = builders.values.map { b ->
             val primaryNum = b.phones.firstOrNull()?.value ?: ""
-            val customPoster = if (primaryNum.isNotBlank()) posterDao.getPosterForNumber(primaryNum) else null
+            val normPrimary = PhoneNormalizer.normalizeDigits(primaryNum)
+            val customPoster = if (normPrimary.isNotBlank()) allPostersMap[normPrimary] else null
             b.build(customPoster?.customPhotoUri)
         }
         applyLocalOverrides(context, resultList)
@@ -393,14 +401,17 @@ object ContactsRepository {
     fun observeContacts(context: Context): Flow<List<ContactItem>> = callbackFlow {
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
-                trySend(runCatching { runBlocking { getContacts(context) } }.getOrDefault(emptyList()))
+                launch(Dispatchers.IO) {
+                    val list = runCatching { getContacts(context) }.getOrDefault(emptyList())
+                    trySend(list)
+                }
             }
         }
         try {
             context.contentResolver.registerContentObserver(ContactsContract.Contacts.CONTENT_URI, true, observer)
-            trySend(getContacts(context))
+            launch(Dispatchers.IO) { trySend(getContacts(context)) }
         } catch (_: Exception) {
-            trySend(getContacts(context))
+            launch(Dispatchers.IO) { trySend(getContacts(context)) }
         }
         awaitClose {
             try { context.contentResolver.unregisterContentObserver(observer) } catch (_: Exception) {}
@@ -410,14 +421,17 @@ object ContactsRepository {
     fun observeStarredContacts(context: Context): Flow<List<ContactItem>> = callbackFlow {
         val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
-                trySend(runCatching { runBlocking { getStarredContacts(context) } }.getOrDefault(emptyList()))
+                launch(Dispatchers.IO) {
+                    val list = runCatching { getStarredContacts(context) }.getOrDefault(emptyList())
+                    trySend(list)
+                }
             }
         }
         try {
             context.contentResolver.registerContentObserver(ContactsContract.Contacts.CONTENT_URI, true, observer)
-            trySend(getStarredContacts(context))
+            launch(Dispatchers.IO) { trySend(getStarredContacts(context)) }
         } catch (_: Exception) {
-            trySend(getStarredContacts(context))
+            launch(Dispatchers.IO) { trySend(getStarredContacts(context)) }
         }
         awaitClose {
             try { context.contentResolver.unregisterContentObserver(observer) } catch (_: Exception) {}

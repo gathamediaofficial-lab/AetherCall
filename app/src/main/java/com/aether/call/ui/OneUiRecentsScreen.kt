@@ -83,6 +83,7 @@ private data class GroupedCallLogRow(
 @Composable
 fun OneUiRecentsScreen(
     callLogs: List<CallLogItem>,
+    isLoading: Boolean = false,
     isMissedFilterActive: Boolean = false,
     onClearMissedFilter: () -> Unit = {},
     onCallClick: (String) -> Unit,
@@ -115,20 +116,27 @@ fun OneUiRecentsScreen(
         }
     }
 
-    // Group logs by Date Header ("Today", "Yesterday", "12 Nov 2026") and collapse consecutive identical calls
+    // Group logs by Date Header ("Today", "Yesterday", "12 November", "12 November 2025") and collapse consecutive identical calls
     val dateGroupedRows = remember(filteredLogs) {
-        val dateFormat = SimpleDateFormat("d MMMM yyyy", Locale.getDefault())
+        val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+        val sameYearFormat = SimpleDateFormat("d MMMM", Locale.getDefault())
+        val pastYearFormat = SimpleDateFormat("d MMMM yyyy", Locale.getDefault())
+
         val byDate = filteredLogs.groupBy { log ->
-            val isToday = DateUtils.isToday(log.dateMillis)
-            val cal = Calendar.getInstance().apply { timeInMillis = log.dateMillis }
-            val yesterday = Calendar.getInstance().apply { add(Calendar.DATE, -1) }
-            val isYesterday = cal.get(Calendar.YEAR) == yesterday.get(Calendar.YEAR) &&
-                    cal.get(Calendar.DAY_OF_YEAR) == yesterday.get(Calendar.DAY_OF_YEAR)
+            val logCal = Calendar.getInstance().apply { timeInMillis = log.dateMillis }
+            val nowCal = Calendar.getInstance()
+            val isToday = nowCal.get(Calendar.YEAR) == logCal.get(Calendar.YEAR) &&
+                    nowCal.get(Calendar.DAY_OF_YEAR) == logCal.get(Calendar.DAY_OF_YEAR)
+
+            val yesterdayCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
+            val isYesterday = yesterdayCal.get(Calendar.YEAR) == logCal.get(Calendar.YEAR) &&
+                    yesterdayCal.get(Calendar.DAY_OF_YEAR) == logCal.get(Calendar.DAY_OF_YEAR)
 
             when {
                 isToday -> "Today"
                 isYesterday -> "Yesterday"
-                else -> dateFormat.format(Date(log.dateMillis))
+                logCal.get(Calendar.YEAR) == currentYear -> sameYearFormat.format(Date(log.dateMillis))
+                else -> pastYearFormat.format(Date(log.dateMillis))
             }
         }
 
@@ -201,12 +209,31 @@ fun OneUiRecentsScreen(
             }
 
             if (dateGroupedRows.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "No ${selectedFilter.title.lowercase()}",
-                        color = Color(0xFF8E8E93),
-                        fontSize = 15.sp,
-                    )
+                if (isLoading) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        repeat(4) {
+                            Surface(
+                                shape = RoundedCornerShape(24.dp),
+                                color = Color(0xFF1E2024).copy(alpha = 0.6f),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(72.dp),
+                            ) {}
+                        }
+                    }
+                } else {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "No ${selectedFilter.title.lowercase()}",
+                            color = Color(0xFF8E8E93),
+                            fontSize = 15.sp,
+                        )
+                    }
                 }
             } else {
                 LazyColumn(
@@ -349,6 +376,17 @@ fun OneUiRecentsScreen(
                                                                 icon = Icons.Default.Info,
                                                                 bgColor = Color(0xFF3A3D45),
                                                                 onClick = { onCallDetailsClick(log) },
+                                                            )
+                                                            RecentsActionCircle(
+                                                                icon = Icons.Default.Block,
+                                                                bgColor = Color(0xFFEF4444),
+                                                                onClick = {
+                                                                    com.aether.call.data.CallLogRepository.blockAndReportSpam(
+                                                                        context = context,
+                                                                        number = log.number,
+                                                                        reason = "Spam / Telemarketer",
+                                                                    )
+                                                                },
                                                             )
                                                         }
                                                     }

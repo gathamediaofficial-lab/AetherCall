@@ -69,7 +69,8 @@ object CallManager {
     fun answer(asVideo: Boolean = isVideoCall.value) {
         val call = _currentCall.value ?: return
         val incomingVideoState = call.details?.videoState ?: VideoProfile.STATE_AUDIO_ONLY
-        val targetVideoState = if (asVideo && VideoProfile.isVideo(incomingVideoState)) {
+        val isVideo = asVideo || _isVideoCall.value || VideoProfile.isVideo(incomingVideoState)
+        val targetVideoState = if (isVideo) {
             VideoProfile.STATE_BIDIRECTIONAL
         } else {
             VideoProfile.STATE_AUDIO_ONLY

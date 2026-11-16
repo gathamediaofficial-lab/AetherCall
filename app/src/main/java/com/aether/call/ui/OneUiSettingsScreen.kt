@@ -140,9 +140,9 @@ fun OneUiSettingsScreen(
     if (activeSubPage == SettingsSubPage.ABOUT) {
         val dynamicVersion = remember(context) {
             try {
-                context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.1.1"
+                context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.1.4"
             } catch (_: Exception) {
-                "1.1.1"
+                "1.1.4"
             }
         }
         AboutSettingsScreen(
@@ -193,245 +193,271 @@ fun OneUiSettingsScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                // CARD 1
+                // SECTION 1: PROTECTION & SECURITY
                 item {
-                    Surface(
-                        shape = RoundedCornerShape(22.dp),
-                        color = Color(0xFF1E2024),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Column {
-                            SettingsTile(
-                                title = "Block numbers",
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    onOpenBlockNumbers()
-                                    activeSubPage = SettingsSubPage.BLOCK_NUMBERS
-                                },
-                            )
+                    Column {
+                        SettingsSectionHeader(title = "PROTECTION & SECURITY")
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = AetherTheme.colors.surface,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column {
+                                SettingsTile(
+                                    title = "Block numbers",
+                                    subtitle = if (userSettings.blockedNumbers.isNotEmpty()) "${userSettings.blockedNumbers.size} numbers blocked" else "Manage blocked calls",
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        onOpenBlockNumbers()
+                                        activeSubPage = SettingsSubPage.BLOCK_NUMBERS
+                                    },
+                                )
 
-                            HorizontalDivider(color = Color(0xFF2E3138), thickness = 0.5.dp)
+                                HorizontalDivider(color = AetherTheme.colors.divider, thickness = 0.5.dp)
 
-                            SettingsSwitchTile(
-                                title = "Caller ID and spam protection",
-                                checked = userSettings.spamShieldEnabled,
-                                onCheckedChange = {
-                                    viewModel.updateUserSettings(context) { s -> s.copy(spamShieldEnabled = it) }
-                                },
-                            )
+                                SettingsSwitchTile(
+                                    title = "Caller ID and spam protection",
+                                    checked = userSettings.spamShieldEnabled,
+                                    onCheckedChange = {
+                                        viewModel.updateUserSettings(context) { s -> s.copy(spamShieldEnabled = it) }
+                                    },
+                                )
 
-                            HorizontalDivider(color = Color(0xFF2E3138), thickness = 0.5.dp)
+                                HorizontalDivider(color = AetherTheme.colors.divider, thickness = 0.5.dp)
 
-                            SettingsTile(
-                                title = "Record calls",
-                                subtitle = if (userSettings.autoRecordCalls) "Auto recording on" else "Auto recording off",
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    activeSubPage = SettingsSubPage.RECORD_CALLS
-                                },
-                            )
+                                SettingsTile(
+                                    title = "Record calls",
+                                    subtitle = if (userSettings.autoRecordCalls) "Auto recording ON" else "Auto recording OFF",
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        activeSubPage = SettingsSubPage.RECORD_CALLS
+                                    },
+                                )
+                            }
                         }
                     }
                 }
 
-                // CARD 2
+                // SECTION 2: APPEARANCE & DISPLAY
                 item {
-                    Surface(
-                        shape = RoundedCornerShape(22.dp),
-                        color = AetherTheme.colors.surface,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Column {
-                            SettingsTile(
-                                title = "App theme",
-                                subtitle = AppThemeMode.fromId(userSettings.appThemeMode).title,
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    activeSubPage = SettingsSubPage.APP_THEME
-                                },
-                            )
+                    Column {
+                        SettingsSectionHeader(title = "APPEARANCE & DISPLAY")
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = AetherTheme.colors.surface,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column {
+                                SettingsTile(
+                                    title = "App theme",
+                                    subtitle = AppThemeMode.fromId(userSettings.appThemeMode).title,
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        activeSubPage = SettingsSubPage.APP_THEME
+                                    },
+                                )
 
-                            HorizontalDivider(color = AetherTheme.colors.divider, thickness = 0.5.dp)
+                                HorizontalDivider(color = AetherTheme.colors.divider, thickness = 0.5.dp)
 
-                            SettingsTile(
-                                title = "Call background",
-                                subtitle = userSettings.callBackgroundTheme,
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    activeSubPage = SettingsSubPage.CALL_BACKGROUND
-                                },
-                            )
+                                SettingsTile(
+                                    title = "Call background",
+                                    subtitle = userSettings.callBackgroundTheme,
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        activeSubPage = SettingsSubPage.CALL_BACKGROUND
+                                    },
+                                )
 
-                            HorizontalDivider(color = Color(0xFF2E3138), thickness = 0.5.dp)
+                                HorizontalDivider(color = AetherTheme.colors.divider, thickness = 0.5.dp)
 
-                            SettingsTile(
-                                title = "Incoming call style",
-                                subtitle = IncomingCallLayoutStyle.fromId(userSettings.incomingCallLayoutStyle).title,
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    showIncomingLayoutSheet = true
-                                },
-                            )
+                                SettingsTile(
+                                    title = "Incoming call style",
+                                    subtitle = IncomingCallLayoutStyle.fromId(userSettings.incomingCallLayoutStyle).title,
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        showIncomingLayoutSheet = true
+                                    },
+                                )
 
-                            HorizontalDivider(color = Color(0xFF2E3138), thickness = 0.5.dp)
+                                HorizontalDivider(color = AetherTheme.colors.divider, thickness = 0.5.dp)
 
-                            SettingsTile(
-                                title = "Caller information",
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    activeSubPage = SettingsSubPage.CALLER_INFO
-                                },
-                            )
+                                SettingsTile(
+                                    title = "Call display while using apps",
+                                    subtitle = userSettings.callDisplayMode,
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        activeSubPage = SettingsSubPage.CALL_DISPLAY
+                                    },
+                                )
+
+                                HorizontalDivider(color = AetherTheme.colors.divider, thickness = 0.5.dp)
+
+                                SettingsTile(
+                                    title = "Caller information",
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        activeSubPage = SettingsSubPage.CALLER_INFO
+                                    },
+                                )
+                            }
                         }
                     }
                 }
 
-                // CARD 3
+                // SECTION 3: AUDIO & CALL CONTROLS
                 item {
-                    Surface(
-                        shape = RoundedCornerShape(22.dp),
-                        color = Color(0xFF1E2024),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Column {
-                            SettingsTile(
-                                title = "Call alerts and ringtone",
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    activeSubPage = SettingsSubPage.ALERTS_RINGTONE
-                                },
-                            )
+                    Column {
+                        SettingsSectionHeader(title = "AUDIO & CALL CONTROLS")
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = AetherTheme.colors.surface,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column {
+                                SettingsTile(
+                                    title = "Call alerts and ringtone",
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        activeSubPage = SettingsSubPage.ALERTS_RINGTONE
+                                    },
+                                )
 
-                            HorizontalDivider(color = Color(0xFF2E3138), thickness = 0.5.dp)
+                                HorizontalDivider(color = AetherTheme.colors.divider, thickness = 0.5.dp)
 
-                            SettingsTile(
-                                title = "Answering and ending calls",
-                                subtitle = "Flip to silence ${if (userSettings.flipToSilence) "enabled" else "disabled"}",
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    activeSubPage = SettingsSubPage.ANSWERING_ENDING
-                                },
-                            )
+                                SettingsSwitchTile(
+                                    title = "Flip to silence",
+                                    checked = userSettings.flipToSilence,
+                                    onCheckedChange = {
+                                        viewModel.updateUserSettings(context) { s -> s.copy(flipToSilence = it) }
+                                    },
+                                )
 
-                            HorizontalDivider(color = Color(0xFF2E3138), thickness = 0.5.dp)
+                                HorizontalDivider(color = AetherTheme.colors.divider, thickness = 0.5.dp)
 
-                            SettingsTile(
-                                title = "Quick decline messages",
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    onOpenQuickReplies()
-                                },
-                            )
+                                SettingsTile(
+                                    title = "Answering and ending calls",
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        activeSubPage = SettingsSubPage.ANSWERING_ENDING
+                                    },
+                                )
 
-                            HorizontalDivider(color = Color(0xFF2E3138), thickness = 0.5.dp)
+                                HorizontalDivider(color = AetherTheme.colors.divider, thickness = 0.5.dp)
 
-                            SettingsTile(
-                                title = "Call display while using apps",
-                                subtitle = userSettings.callDisplayMode,
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    activeSubPage = SettingsSubPage.CALL_DISPLAY
-                                },
-                            )
+                                SettingsTile(
+                                    title = "Quick decline messages",
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        onOpenQuickReplies()
+                                    },
+                                )
+                            }
                         }
                     }
                 }
 
-                // CARD 4
+                // SECTION 4: NETWORK & SIM SERVICES
                 item {
-                    Surface(
-                        shape = RoundedCornerShape(22.dp),
-                        color = Color(0xFF1E2024),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Column {
-                            SettingsTile(
-                                title = "SIM card manager / Default calling SIM",
-                                subtitle = userSettings.defaultSimMode,
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    showSimModeDialog = true
-                                },
-                            )
+                    Column {
+                        SettingsSectionHeader(title = "NETWORK & SIM SERVICES")
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = AetherTheme.colors.surface,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column {
+                                SettingsTile(
+                                    title = "Default calling SIM",
+                                    subtitle = userSettings.defaultSimMode,
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        showSimModeDialog = true
+                                    },
+                                )
 
-                            HorizontalDivider(color = Color(0xFF2E3138), thickness = 0.5.dp)
+                                HorizontalDivider(color = AetherTheme.colors.divider, thickness = 0.5.dp)
 
-                            SettingsTile(
-                                title = "Wi-Fi Calling",
-                                subtitle = "Wi-Fi preferred",
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    safeLaunchIntent(context, Intent(Settings.ACTION_WIRELESS_SETTINGS))
-                                },
-                            )
+                                SettingsTile(
+                                    title = "Wi-Fi Calling",
+                                    subtitle = "Wi-Fi preferred",
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        safeLaunchIntent(context, Intent(Settings.ACTION_WIRELESS_SETTINGS))
+                                    },
+                                )
 
-                            HorizontalDivider(color = Color(0xFF2E3138), thickness = 0.5.dp)
+                                HorizontalDivider(color = AetherTheme.colors.divider, thickness = 0.5.dp)
 
-                            SettingsTile(
-                                title = "Voicemail",
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    safeLaunchIntent(context, Intent(TelecomManager.ACTION_CHANGE_PHONE_ACCOUNTS))
-                                },
-                            )
+                                SettingsTile(
+                                    title = "Voicemail",
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        safeLaunchIntent(context, Intent(TelecomManager.ACTION_CHANGE_PHONE_ACCOUNTS))
+                                    },
+                                )
 
-                            HorizontalDivider(color = Color(0xFF2E3138), thickness = 0.5.dp)
+                                HorizontalDivider(color = AetherTheme.colors.divider, thickness = 0.5.dp)
 
-                            SettingsTile(
-                                title = "Supplementary services",
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    activeSubPage = SettingsSubPage.SUPPLEMENTARY_SERVICES
-                                },
-                            )
+                                SettingsTile(
+                                    title = "Supplementary services",
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        activeSubPage = SettingsSubPage.SUPPLEMENTARY_SERVICES
+                                    },
+                                )
 
-                            HorizontalDivider(color = Color(0xFF2E3138), thickness = 0.5.dp)
+                                HorizontalDivider(color = AetherTheme.colors.divider, thickness = 0.5.dp)
 
-                            SettingsTile(
-                                title = "Other call settings",
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    activeSubPage = SettingsSubPage.OTHER_SETTINGS
-                                },
-                            )
+                                SettingsTile(
+                                    title = "Other call settings",
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        activeSubPage = SettingsSubPage.OTHER_SETTINGS
+                                    },
+                                )
+                            }
                         }
                     }
                 }
 
-                // CARD 5
+                // SECTION 5: SYSTEM & ABOUT
                 item {
-                    Surface(
-                        shape = RoundedCornerShape(22.dp),
-                        color = Color(0xFF1E2024),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Column {
-                            SettingsTile(
-                                title = "Permissions",
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    safeLaunchIntent(
-                                        context,
-                                        Intent(
-                                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                            Uri.fromParts("package", context.packageName, null),
-                                        ),
-                                    )
-                                },
-                            )
+                    Column {
+                        SettingsSectionHeader(title = "SYSTEM & ABOUT")
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = AetherTheme.colors.surface,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column {
+                                SettingsTile(
+                                    title = "App permissions",
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        safeLaunchIntent(
+                                            context,
+                                            Intent(
+                                                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                                Uri.fromParts("package", context.packageName, null),
+                                            ),
+                                        )
+                                    },
+                                )
 
-                            HorizontalDivider(color = Color(0xFF2E3138), thickness = 0.5.dp)
+                                HorizontalDivider(color = AetherTheme.colors.divider, thickness = 0.5.dp)
 
-                            SettingsTile(
-                                title = "About Aether Call",
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    activeSubPage = SettingsSubPage.ABOUT
-                                },
-                            )
+                                SettingsTile(
+                                    title = "About Aether Call",
+                                    subtitle = "Version 1.1.4",
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        activeSubPage = SettingsSubPage.ABOUT
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -844,7 +870,7 @@ private fun SubPageContainer(
                                 HorizontalDivider(color = Color(0xFF2E3138), thickness = 0.5.dp, modifier = Modifier.padding(vertical = 12.dp))
 
                                 Text(
-                                    text = "Add phone number",
+                                    text = "Add phone number to block list",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = Color(0xFF8E8E93),
@@ -860,7 +886,7 @@ private fun SubPageContainer(
                                     OutlinedTextField(
                                         value = numberToBlock,
                                         onValueChange = { numberToBlock = it },
-                                        placeholder = { Text("Enter number to block...", color = Color(0xFF8E8E93)) },
+                                        placeholder = { Text("Enter phone number...", color = Color(0xFF8E8E93)) },
                                         singleLine = true,
                                         colors = OutlinedTextFieldDefaults.colors(
                                             focusedContainerColor = Color(0xFF141619),
@@ -877,7 +903,7 @@ private fun SubPageContainer(
                                         onClick = {
                                             if (numberToBlock.isNotBlank()) {
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                viewModel.addBlockedNumber(context, numberToBlock.trim())
+                                                viewModel.blockAndReportSpam(context, numberToBlock.trim(), "Spam / Telemarketer")
                                                 numberToBlock = ""
                                             }
                                         },
@@ -1381,6 +1407,17 @@ private fun SubPageContainer(
             }
         }
     }
+}
+
+@Composable
+private fun SettingsSectionHeader(title: String) {
+    Text(
+        text = title,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Bold,
+        color = Color(0xFF8E8E93),
+        modifier = Modifier.padding(start = 12.dp, top = 6.dp, bottom = 2.dp),
+    )
 }
 
 @Composable

@@ -83,6 +83,35 @@ object DialerPermissionHelper {
         return Settings.canDrawOverlays(context)
     }
 
+    fun isIgnoringBatteryOptimizations(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val pm = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+            pm?.isIgnoringBatteryOptimizations(context.packageName) == true
+        } else true
+    }
+
+    fun openBatteryOptimizationSettings(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                val intent = Intent(
+                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:${context.packageName}")
+                ).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            } catch (_: Exception) {
+                try {
+                    val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                } catch (_: Exception) {
+                }
+            }
+        }
+    }
+
     fun openAppInfoForRestrictedSettings(context: Context) {
         val intent = Intent(
             Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
@@ -239,6 +268,18 @@ fun PermissionSetupBannerOrSheet() {
                     subtitle = "Allows instant call screen launch from background",
                     isGranted = false,
                     onClick = { DialerPermissionHelper.openOverlayPermissionSettings(context) }
+                )
+            }
+
+            // Step 6: Unthrottled Performance (Exempt from Battery Saver)
+            var isUnthrottled by remember { mutableStateOf(DialerPermissionHelper.isIgnoringBatteryOptimizations(context)) }
+            if (!isUnthrottled) {
+                PermissionActionRow(
+                    icon = Icons.Default.Security,
+                    title = "Unthrottled Performance (Battery Optimization)",
+                    subtitle = "Exempt from battery saver limits to prevent background call log lag",
+                    isGranted = false,
+                    onClick = { DialerPermissionHelper.openBatteryOptimizationSettings(context) }
                 )
             }
         }

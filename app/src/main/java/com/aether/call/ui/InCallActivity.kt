@@ -592,6 +592,10 @@ fun InCallActivityContainer(
             },
             onDtmfDigitPress = { digit -> CallBridge.playDtmfTone(digit) },
             onEndCallClick = { CallBridge.disconnectCall() },
+            onBlockAndReportSpam = { numberToBlock, reason ->
+                com.aether.call.data.CallLogRepository.blockAndReportSpam(context, numberToBlock, reason)
+                CallBridge.disconnectCall()
+            },
             onCallAgainClick = { numberToRedial ->
                 wasVideoSession = false
                 if (numberToRedial.isNotBlank()) {

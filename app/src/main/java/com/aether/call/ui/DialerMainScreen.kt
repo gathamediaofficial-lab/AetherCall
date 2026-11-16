@@ -79,6 +79,7 @@ fun DialerMainScreen(
     val myProfile by viewModel.myProfile.collectAsState()
     val simSelectionDialog by viewModel.simSelectionDialog.collectAsState()
     val activeSims by viewModel.activeSims.collectAsState()
+    val isLoadingRecents by viewModel.isLoadingRecents.collectAsState()
 
     var isSettingsOpen by rememberSaveable { mutableStateOf(false) }
     var showAboutScreen by rememberSaveable { mutableStateOf(false) }
@@ -316,9 +317,9 @@ fun DialerMainScreen(
             showAboutScreen -> {
                 val dynamicVersion = remember(context) {
                     try {
-                        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.1.1"
+                        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.1.4"
                     } catch (_: Exception) {
-                        "1.1.1"
+                        "1.1.4"
                     }
                 }
                 AboutSettingsScreen(
@@ -468,6 +469,7 @@ fun DialerMainScreen(
                             NavigationTab.RECENTS -> {
                                 OneUiRecentsScreen(
                                     callLogs = filteredCallLogs,
+                                    isLoading = isLoadingRecents,
                                     isMissedFilterActive = isMissedFilterActive,
                                     onClearMissedFilter = { isMissedFilterActive = false },
                                     onCallClick = { number -> viewModel.placeOutgoingCall(context, number) },

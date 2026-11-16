@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -67,6 +68,10 @@ import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Videocam
@@ -156,6 +161,7 @@ fun InCallScreen(
     onRespondVideoUpgrade: (Boolean) -> Unit = {},
     onDtmfDigitPress: (Char) -> Unit,
     onEndCallClick: () -> Unit,
+    onBlockAndReportSpam: (String, String) -> Unit = { _, _ -> },
     onCallAgainClick: ((String) -> Unit)? = null,
     onDismissEndedScreen: (() -> Unit)? = null,
     onUpdateBackgroundTheme: ((String) -> Unit)? = null,
@@ -225,6 +231,8 @@ fun InCallScreen(
     val canUpgradeToVideo by CallManager.canUpgradeToVideo.collectAsState()
     val videoDowngradedNotice by CallManager.videoDowngradedNotice.collectAsState()
 
+    var showBlockSpamDialog by remember { mutableStateOf(false) }
+
     LaunchedEffect(videoDowngradedNotice) {
         val notice = videoDowngradedNotice
         if (!notice.isNullOrBlank()) {
@@ -274,48 +282,66 @@ fun InCallScreen(
         val fullScreenPhoto = callerPhotoUri?.takeIf { it.isNotBlank() }
             ?: customCallBackgroundUri?.takeIf { it.isNotBlank() }
 
+        // Clean Ambient Vertical Gradient Background
+        val topColor = resolvedBackgroundColors.firstOrNull()?.copy(alpha = 0.65f) ?: Color(0xFF1E293B)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            topColor,
+                            Color(0xFF0F172A),
+                            Color(0xFF07090E),
+                        ),
+                    ),
+                ),
+        )
+
+        // Ergonomic Glassmorphic Contact Photo Container with Dynamic Readjustment & Gradient Border
         if (fullScreenPhoto != null) {
-            // Full-Screen Apple Contact Poster Photo
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(fullScreenPhoto)
-                    .crossfade(true)
-                    .build(),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-            // Apple iOS Poster Gradient Scrim so white text & bottom buttons are crystal clear
+            val topPadding = 160.dp
+            val bottomPadding = if (isIncoming) 160.dp else 330.dp
+
+            val glassGradientBorder = remember {
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.40f),
+                        Color.White.copy(alpha = 0.10f),
+                        Color(0xFF10B981).copy(alpha = 0.35f),
+                    ),
+                )
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colorStops = arrayOf(
-                                0.0f to Color.Black.copy(alpha = 0.65f),
-                                0.35f to Color.Black.copy(alpha = 0.18f),
-                                0.65f to Color.Black.copy(alpha = 0.45f),
-                                1.0f to Color.Black.copy(alpha = 0.85f),
-                            ),
-                        ),
-                    ),
-            )
-        } else {
-            // Clean Apple iOS Dark Ambient Gradient when contact has no saved photo
-            val topColor = resolvedBackgroundColors.firstOrNull()?.copy(alpha = 0.65f) ?: Color(0xFF1E293B)
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                topColor,
-                                Color(0xFF0F172A),
-                                Color(0xFF07090E),
-                            ),
-                        ),
-                    ),
-            )
+                    .statusBarsPadding()
+                    .padding(top = topPadding, bottom = bottomPadding, start = 28.dp, end = 28.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(32.dp),
+                    color = Color.White.copy(alpha = 0.08f),
+                    border = BorderStroke(1.5.dp, glassGradientBorder),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(if (isIncoming) 0.85f else 0.70f),
+                ) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(fullScreenPhoto)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = "Contact Photo",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(8.dp)
+                            .clip(RoundedCornerShape(26.dp)),
+                    )
+                }
+            }
         }
 
         // =========================================================================
@@ -478,12 +504,12 @@ fun InCallScreen(
                     ) {
                         IconButton(onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            isScreenLocked = true
+                            isScreenLocked = !isScreenLocked
                         }) {
                             Icon(
-                                imageVector = Icons.Default.LockOpen,
-                                contentDescription = "Lock touch protection",
-                                tint = Color.White,
+                                imageVector = if (isScreenLocked) Icons.Default.Lock else Icons.Default.LockOpen,
+                                contentDescription = if (isScreenLocked) "Unlock screen" else "Lock screen touch protection",
+                                tint = if (isScreenLocked) Color(0xFF10B981) else Color.White,
                             )
                         }
 
@@ -510,11 +536,16 @@ fun InCallScreen(
                                 modifier = Modifier.background(Color(0xFF25272C)),
                             ) {
                                 DropdownMenuItem(
-                                    text = { Text("Lock screen touch protection", color = Color.White) },
+                                    text = {
+                                        Text(
+                                            text = if (isScreenLocked) "Unlock screen" else "Lock screen touch protection",
+                                            color = if (isScreenLocked) Color(0xFF10B981) else Color.White,
+                                        )
+                                    },
                                     onClick = {
                                         showOverflowMenu = false
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        isScreenLocked = true
+                                        isScreenLocked = !isScreenLocked
                                     },
                                 )
                                 DropdownMenuItem(
@@ -534,6 +565,13 @@ fun InCallScreen(
                                     onClick = {
                                         showOverflowMenu = false
                                         onTransferRecordingClick()
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Block & report spam", color = Color(0xFFEF4444)) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        showBlockSpamDialog = true
                                     },
                                 )
                                 DropdownMenuItem(
@@ -1008,92 +1046,18 @@ fun InCallScreen(
             }
         }
 
-        // Touch Protection / Screen Lock Full-Screen Overlay for Audio Calls
+        // Transparent Touch Blocker when screen is locked (NO dark/blur overlay or text popups)
         if (isScreenLocked && !isEnded) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.88f))
                     .clickable(
                         interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                         indication = null,
                     ) {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     },
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                    modifier = Modifier.padding(24.dp),
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color(0xFF1E2024),
-                        border = BorderStroke(1.dp, Color(0xFF10B981)),
-                        modifier = Modifier.size(84.dp),
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = "Locked",
-                                tint = Color(0xFF10B981),
-                                modifier = Modifier.size(38.dp),
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    Text(
-                        text = "Touch protection enabled",
-                        color = Color.White,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Text(
-                        text = "Screen is locked to prevent accidental touches",
-                        color = Color(0xFF94A3B8),
-                        fontSize = 14.sp,
-                        textAlign = TextAlign.Center,
-                    )
-
-                    Spacer(modifier = Modifier.height(32.dp))
-
-                    Surface(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            isScreenLocked = false
-                        },
-                        shape = RoundedCornerShape(28.dp),
-                        color = Color(0xFF10B981),
-                        modifier = Modifier.height(54.dp),
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                            modifier = Modifier.padding(horizontal = 28.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.LockOpen,
-                                contentDescription = null,
-                                tint = Color.Black,
-                                modifier = Modifier.size(20.dp),
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = "Unlock screen",
-                                color = Color.Black,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                    }
-                }
-            }
+            )
         }
     }
 
@@ -1161,6 +1125,63 @@ fun InCallScreen(
                 }
             },
             onDismiss = { showBgPickerSheet = false },
+        )
+    }
+
+    if (showBlockSpamDialog) {
+        val spamReasons = listOf("Spam / Telemarketer", "Robocall", "Scam / Fraud", "Personal / Unwanted")
+        var selectedReason by remember { mutableStateOf(spamReasons.first()) }
+
+        AlertDialog(
+            onDismissRequest = { showBlockSpamDialog = false },
+            containerColor = Color(0xFF1E2024),
+            title = {
+                Text("Block & Report Spam", color = Color.White, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Block $callerNumber and report to Aether Spam Protection Shield?",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 13.sp,
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    spamReasons.forEach { reason ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { selectedReason = reason }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = selectedReason == reason,
+                                onClick = { selectedReason = reason },
+                                colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFEF4444)),
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(reason, color = Color.White, fontSize = 15.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showBlockSpamDialog = false
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onBlockAndReportSpam(callerNumber, selectedReason)
+                    },
+                ) {
+                    Text("Block & End Call", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBlockSpamDialog = false }) {
+                    Text("Cancel", color = Color.White)
+                }
+            },
         )
     }
 }

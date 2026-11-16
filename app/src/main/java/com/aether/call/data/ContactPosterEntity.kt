@@ -34,6 +34,9 @@ interface ContactPosterDao {
     @Query("SELECT * FROM contact_posters WHERE phoneNumber = :number LIMIT 1")
     suspend fun getPosterForNumber(number: String): ContactPosterEntity?
 
+    @Query("SELECT * FROM contact_posters")
+    suspend fun getAllPosters(): List<ContactPosterEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun savePoster(poster: ContactPosterEntity)
 }

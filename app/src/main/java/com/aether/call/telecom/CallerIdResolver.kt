@@ -3,7 +3,7 @@ package com.aether.call.telecom
 import android.content.Context
 import android.net.Uri
 import android.provider.ContactsContract
-import com.aether.call.data.ContactsRepository
+import android.util.LruCache
 import com.aether.call.util.PhoneNormalizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -27,8 +27,14 @@ typealias ResolvedCallerInfo = ResolvedCaller
 
 object CallerIdResolver {
 
+    private val cache = LruCache<String, ResolvedCaller>(256)
+
+    fun clearCache() {
+        cache.evictAll()
+    }
+
     /**
-     * Synchronous / background-safe caller resolution used by AetherInCallService,
+     * High-speed, cached caller resolution used by AetherInCallService,
      * CallNotificationManager, ActiveCallNotificationBuilder, and IncomingCallOverlayService.
      */
     fun resolveCaller(context: Context, rawNumber: String?): ResolvedCaller {
@@ -42,6 +48,11 @@ object CallerIdResolver {
                 isSavedContact = false,
             )
         }
+
+        val cached = cache.get(clean)
+        if (cached != null) return cached
+
+        var result: ResolvedCaller? = null
 
         // 1. Try fast native PhoneLookup (handles standard E.164 and local formats)
         try {
@@ -73,7 +84,7 @@ object CallerIdResolver {
                     ).toString()
 
                     if (!name.isNullOrBlank()) {
-                        return ResolvedCaller(
+                        result = ResolvedCaller(
                             displayName = name,
                             rawNumber = clean,
                             label = typeLabel.ifBlank { "Mobile" },
@@ -84,6 +95,12 @@ object CallerIdResolver {
                 }
             }
         } catch (_: Exception) {
+        }
+
+        val res1 = result
+        if (res1 != null) {
+            cache.put(clean, res1)
+            return res1
         }
 
         // 2. Fallback: Normalized trailing 10-digit PhoneLookup (strips +91, 0, spaces, hyphens)
@@ -118,7 +135,7 @@ object CallerIdResolver {
                         ).toString()
 
                         if (!name.isNullOrBlank()) {
-                            return ResolvedCaller(
+                            result = ResolvedCaller(
                                 displayName = name,
                                 rawNumber = clean,
                                 label = typeLabel.ifBlank { "Mobile" },
@@ -132,7 +149,13 @@ object CallerIdResolver {
             }
         }
 
-        // 3. Direct CommonDataKinds.Phone scan comparing normalized 10-digit numbers
+        val res2 = result
+        if (res2 != null) {
+            cache.put(clean, res2)
+            return res2
+        }
+
+        // 3. Fast indexed CommonDataKinds.Phone query comparing trailing digits
         if (norm10.length >= 7) {
             try {
                 context.contentResolver.query(
@@ -144,32 +167,29 @@ object CallerIdResolver {
                         ContactsContract.CommonDataKinds.Phone.TYPE,
                         ContactsContract.CommonDataKinds.Phone.LABEL,
                     ),
-                    null,
-                    null,
+                    "${ContactsContract.CommonDataKinds.Phone.NUMBER} LIKE ?",
+                    arrayOf("%$norm10"),
                     null,
                 )?.use { cursor ->
-                    while (cursor.moveToNext()) {
-                        val dbNum = cursor.getString(0) ?: continue
-                        if (PhoneNormalizer.normalizeDigits(dbNum) == norm10) {
-                            val name = cursor.getString(1)
-                            val photo = cursor.getString(2)
-                            val type = cursor.getInt(3)
-                            val customLabel = cursor.getString(4)
-                            val typeLabel = ContactsContract.CommonDataKinds.Phone.getTypeLabel(
-                                context.resources,
-                                type,
-                                customLabel,
-                            ).toString()
+                    if (cursor.moveToFirst()) {
+                        val name = cursor.getString(1)
+                        val photo = cursor.getString(2)
+                        val type = cursor.getInt(3)
+                        val customLabel = cursor.getString(4)
+                        val typeLabel = ContactsContract.CommonDataKinds.Phone.getTypeLabel(
+                            context.resources,
+                            type,
+                            customLabel,
+                        ).toString()
 
-                            if (!name.isNullOrBlank()) {
-                                return ResolvedCaller(
-                                    displayName = name,
-                                    rawNumber = clean,
-                                    label = typeLabel.ifBlank { "Mobile" },
-                                    photoUri = photo,
-                                    isSavedContact = true,
-                                )
-                            }
+                        if (!name.isNullOrBlank()) {
+                            result = ResolvedCaller(
+                                displayName = name,
+                                rawNumber = clean,
+                                label = typeLabel.ifBlank { "Mobile" },
+                                photoUri = photo,
+                                isSavedContact = true,
+                            )
                         }
                     }
                 }
@@ -177,13 +197,16 @@ object CallerIdResolver {
             }
         }
 
-        return ResolvedCaller(
+        val fallback = result ?: ResolvedCaller(
             displayName = clean,
             rawNumber = clean,
             label = "Unsaved",
             photoUri = null,
             isSavedContact = false,
         )
+
+        cache.put(clean, fallback)
+        return fallback
     }
 
     suspend fun resolve(context: Context, rawNumber: String?): ResolvedCaller = withContext(Dispatchers.IO) {

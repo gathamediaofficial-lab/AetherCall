@@ -43,6 +43,7 @@ import androidx.compose.material.icons.automirrored.filled.CallMissed
 import androidx.compose.material.icons.automirrored.filled.CallReceived
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Cake
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Call
@@ -751,6 +752,45 @@ fun OneUiContactCardScreen(
                 }
             }
 
+            // 3.5 BLOCK & REPORT SPAM TILE
+            if (primaryPhone != null && primaryPhone.value.isNotBlank() && !isMyProfile) {
+                item {
+                    Surface(
+                        onClick = {
+                            com.aether.call.data.CallLogRepository.blockAndReportSpam(
+                                context = context,
+                                number = primaryPhone.value,
+                                reason = "Spam / Telemarketer",
+                            )
+                        },
+                        shape = RoundedCornerShape(24.dp),
+                        color = Color(0xFF1E2024),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                text = "Block number & report spam",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFFEF4444),
+                            )
+                            Icon(
+                                imageVector = Icons.Default.Block,
+                                contentDescription = "Block",
+                                tint = Color(0xFFEF4444),
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+                }
+            }
+
             // 4. MULTIPLE EMAILS SECTION (Synced with Email Apps Open-With Chooser)
             if (contact.emails.isNotEmpty()) {
                 item {
@@ -1361,18 +1401,21 @@ fun OneUiContactEditSheet(
 
     var note by rememberSaveable { mutableStateOf(contactToEdit?.note ?: "") }
 
+    var pendingCropUri by remember { mutableStateOf<String?>(null) }
+    var cropTargetKey by remember { mutableStateOf("avatar") }
+
     val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
-            val key = (contactToEdit?.id?.takeIf { it > 0L }?.toString())
-                ?: phonesList.firstOrNull()?.value
-                ?: System.currentTimeMillis().toString()
-            val (permanentUri, _) = ContactsRepository.persistPhotoToInternalStorage(context, uri.toString(), key)
-            photoUri = permanentUri ?: uri.toString()
+            cropTargetKey = "avatar"
+            pendingCropUri = uri.toString()
         }
     }
 
     val callingCardPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) callingCardPhotoUri = uri.toString()
+        if (uri != null) {
+            cropTargetKey = "card"
+            pendingCropUri = uri.toString()
+        }
     }
 
     val phoneLabelOptions = listOf("Mobile", "Work", "Home", "Main", "Other")
@@ -2053,6 +2096,22 @@ fun OneUiContactEditSheet(
                 }
             }
         }
+    }
+
+    if (pendingCropUri != null) {
+        PhotoCropperEditorDialog(
+            sourcePhotoUri = pendingCropUri!!,
+            outputKey = cropTargetKey,
+            onPhotoSaved = { savedUri ->
+                if (cropTargetKey == "card") {
+                    callingCardPhotoUri = savedUri
+                } else {
+                    photoUri = savedUri
+                }
+                pendingCropUri = null
+            },
+            onDismiss = { pendingCropUri = null },
+        )
     }
 }
 

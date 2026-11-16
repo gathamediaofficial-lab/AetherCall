@@ -6,25 +6,24 @@ It combines the clean, edge-to-edge Apple iOS 18 Contact Poster in-call experien
 
 ---
 
-## ✨ What's New in v1.1.3
+## ✨ What's New in v1.1.4
 
-* 🔒 **In-Call Screen Lock & Touch Protection**: Added a dedicated Touch Protection feature to both active Audio (`InCallScreen`) and Video (`CarrierVideoCallScreen`) call screens. Users can tap to lock the screen during a call to prevent accidental touches on Mute, Speaker, Hold, DTMF Keypad, Camera Flip, or End Call. Displays a prominent frosted Lock badge with a 1-tap **"Unlock screen"** button that automatically resets when the call ends.
-* 📹 **Hardened Carrier ViLTE HD Video Engine**:
-  * **Zero Process Camera Lock**: Replaced CameraX locks with direct `TextureView` surface binding (`CallManager.bindLocalPreviewSurface` & `bindRemoteDisplaySurface`), preventing recipient camera conflict crashes (`CAMERA_IN_USE`).
-  * **Mid-Call Audio-to-Video Upgrade**: Tracks `isVideoUpgradePending` with a 15-second auto-timeout, interactive **"Cancel Request"** control, and carrier capability checks (`CAPABILITY_SUPPORTS_VT_LOCAL_BIDIRECTIONAL`).
-  * **Carrier-Compliant VideoProfile Dispatch**: Formats `VideoProfile(VideoProfile.STATE_BIDIRECTIONAL)` requests without `QUALITY_HIGH` flags that cause Jio/Airtel/Samsung IMS stack rejections.
-* 🎨 **Active Light, Dark, and System Theme Controls**: Added full theme controls under **Settings → App theme**. Users can toggle anytime between **System default** (follows Android device theme), **Light mode** (clean One UI light theme), and **Dark mode** (AMOLED dark background), with instant UI re-theming and dynamic edge-to-edge system bar contrast adaptation.
-* 🔔 **OEM Ringtone & Vibration Engine (`CallRingtonePlayer`)**: Dedicated incoming call audio and haptic engine supporting default/custom ringtones, repeating vibration patterns, flip-to-silence gestures, and hardware volume key silencing—without mutating device-wide system ringer settings.
-* ⚡ **Thread-Safe UI & Async Protection (`ToastUtils`)**: Safe Toast dispatcher ensuring all status alerts across background coroutines and telephony workers post seamlessly on the Main UI thread.
-* 🛡️ **Hardened Samsung One UI & OEM Call Ownership**: Unified foreground service notification binding (`ID = 1001`) with dual-channel quiet/high-importance routing (`aether_telecom_channel_v3_silent` + `aether_call_quiet_v2`) to eliminate double ringtones and prevent native OEM dialers from hijacking active calls.
-* 📶 **Precision Dual-SIM Carrier Detection**: Powered by `SimAccountResolver`, Aether Call cross-matches `TelecomManager` `PhoneAccountHandle` labels, ICCIDs, subscription IDs, and physical slot indices (`SIM 1 • Jio`, `SIM 2 • Airtel`) with full "Ask every time" (`STATE_SELECT_PHONE_ACCOUNT`) support.
+* 🖼️ **Ergonomic Glassmorphic Contact Photo Container**: Replaced full-screen stretched cropping with a centered high-resolution photo box taking ~50% of screen height, styled with a frosted glass structure (`Color.White.copy(0.08f)`) and continuous vertical gradient transparent border (`Color.White.copy(0.40f)` → `Color(0xFF10B981).copy(0.35f)`). Protects header text (`top = 160.dp`) and dynamically readjusts height on active answered calls (`bottom = 330.dp`) to avoid button collision while maintaining 100% full HD aspect ratio (`ContentScale.Fit`).
+* ✂️ **Interactive Photo Customization & Cropping Suite (`PhotoCropperEditorDialog`)**: Real-time 2D pan/drag, 1.0x–4.0x pinch-to-zoom & smooth zoom slider, 90° step rotation, 1-tap reset, and high-res 92% JPEG export to app internal storage.
+* 🛡️ **End-to-End Spam Protection, Spam Reporting & Number Blocking**: Built a unified multi-layered spam protection architecture. Added 1-tap **"Block & Report Spam"** in call overflow menu (`BlockAndReportSpamDialog`), block action buttons in Recents call log rows, contact profile detail sheet block tile, and settings protection controls with categorization (`Spam / Telemarketer`, `Robocall`, `Scam / Fraud`, `Personal / Unwanted`).
+* 🎙️ **Unified High-Performance Call Recording Engine**: Replaced PFD streams with direct POSIX file output in `Environment.DIRECTORY_MUSIC/Aether Call Recordings`, eliminating 0-byte/empty saved files. Auto-publishes non-zero byte AAC/M4A recordings to system MediaStore with `IS_PENDING = 0` and `MediaScannerConnection` sync.
+* ⚡ **2-Stage Staged Call History Loading**: Stage 1 queries past 7 days history instantly (< 5ms); Stage 2 loads older historical records asynchronously in the background.
+* 🔢 **Vertical T9 Predictive Dialpad Search**: Converted predictive T9 contact matches from `LazyRow` to a vertical `LazyColumn` above the keypad with full-width cards, high-res avatars, contact labels, and 1-tap green Call buttons.
+* ⚙️ **Compact & Productive Call Settings Redesign**: Redesigned settings into 5 clean, compact, category-header sections (`PROTECTION & SECURITY`, `APPEARANCE & DISPLAY`, `AUDIO & CALL CONTROLS`, `NETWORK & SIM SERVICES`, `SYSTEM & ABOUT`) with 18.dp rounded cards and inline productivity switches.
+* 📹 **Carrier ViLTE Answer Stabilization**: Enhanced `AetherInCallService.answer(asVideo = true)` to unconditionally dispatch `VideoProfile.STATE_BIDIRECTIONAL` to Telecom and carrier IMS stack.
 
 ---
 
 ## 🌟 Core Features
 
 ### 1. Advanced In-Call Experience & Security
-* **In-Call Touch Protection**: Lock active audio and video call screens with 1 tap to eliminate accidental in-call touches.
+* **Ergonomic Glassmorphic Contact Photo**: 50% screen height centered HD contact photo card with continuous gradient glass border and zero text or button overlap.
+* **In-Call Screen Lock & Touch Protection**: Lock active audio and video call screens with 1 tap to eliminate accidental in-call touches.
 * **App-Wide Theme Control**: Live selection between **Light Mode**, **Dark Mode**, and **System Default** directly from Settings.
 * **Dual Incoming Call Layouts**: Switch anytime in Settings between iOS Style (*"Slide to Answer"*) with shimmer track and One UI Style (*"Dual Action Buttons"*).
 * **Built-In Call Recording**: Record calls locally in high-clarity `.m4a` format directly into public device storage (`Music/Aether Call Recordings` via Android MediaStore) with instant playback and sharing.
@@ -35,7 +34,9 @@ It combines the clean, edge-to-edge Apple iOS 18 Contact Poster in-call experien
 * **Picture-in-Picture (PiP) Mode**: Minimizes active calls into a floating window with live audio equalizer bars when navigating to the home screen.
 
 ### 2. Smart Dialer, Recents & Multi-Account Contacts
-* **T9 Smart Keypad Search**: Instant incremental matching across contact names and phone numbers with highlighted matches.
+* **Vertical T9 Smart Keypad Search**: Instant incremental matching across contact names and phone numbers in a vertical scrollable card list.
+* **Photo Customization Suite**: Crop, scale (1x–4x zoom slider), drag/pan, rotate 90°, and export contact profile photos in high quality.
+* **Multi-Layered Spam Shield & Blocking**: Block calls from unknown numbers, report spam with custom reasons (`Spam`, `Robocall`, `Scam`, `Unwanted`), and block directly from active calls, call logs, or contact details.
 * **Swipe-to-Call / Swipe-to-Message**: Swipe right on any contact or call log row to place a call, or swipe left to jump straight into an SMS conversation.
 * **Rich Contact Cards & Editor**:
   * Support for multiple phone numbers with 1-tap Primary / Default Number selection.
@@ -59,7 +60,7 @@ Aether Call is built on a strict **Zero Data Collection** policy:
 ## 📥 Installation & Setup Guide (Android 8.0 – Android 15+)
 
 1. **Download the APK**:
-   Download the latest signed release APK (`AetherCall-v1.1.3.apk`) from the GitHub Releases page.
+   Download the latest signed release APK (`AetherCall-v1.1.4.apk`) from the GitHub Releases page.
 
 2. **Unlock Restricted Settings (Android 13 / 14 / 15+ Users)**:
    Because the APK is installed directly from GitHub outside the Google Play Store, Android 13+ applies Enhanced Confirmation Mode:
@@ -70,7 +71,7 @@ Aether Call is built on a strict **Zero Data Collection** policy:
    Open Aether Call and use the guided setup card at the top of the screen to:
    - Set Aether Call as your **Default Phone App** (`ROLE_DIALER`).
    - Grant runtime permissions (Phone, Call Logs, Contacts, Microphone, Camera for ViLTE Video Calls, SMS for Quick Replies).
-   - Enable **Full-Screen Intent alerts** (Android 14+) and **Appear on Top (Overlay)** so incoming calls always wake the lock screen cleanly.
+   - Enable **Full-Screen Intent alerts** (Android 14+), **Appear on Top (Overlay)**, and **Unthrottled Performance (Battery Optimization Exemption)** so background sync and incoming call alerts operate with 100% responsiveness.
 
 ---
 
@@ -78,16 +79,16 @@ Aether Call is built on a strict **Zero Data Collection** policy:
 
 * **UI Framework**: 100% Jetpack Compose (Material 3, `AetherTheme` Light/Dark/System engine, Custom Canvas Equalizers, Edge-to-Edge Window Insets)
 * **Telephony Core**: `android.telecom.InCallService`, `CallScreeningService`, `TelecomManager`, `SubscriptionManager`, `VideoProfile` (ViLTE/IMS)
-* **Local Persistence**: Room SQLite Database (Contact Posters & Quick Reply Templates) + Jetpack DataStore Preferences
-* **Media & Imaging**: Android MediaStore (`Audio.Media`), `CallRingtonePlayer`, Coil (`AsyncImage`), ZXing (Offline vCard QR Code generation)
+* **Local Persistence**: Room SQLite Database (Contact Posters, Blocked Numbers, Quick Reply Templates) + Jetpack DataStore Preferences
+* **Media & Imaging**: Android MediaStore (`Audio.Media`), `CallRingtonePlayer`, `CallRecordingManager`, `PhotoCropperEditorDialog`, Coil (`AsyncImage`), ZXing (vCard QR Code generation)
 
 ```
 com.aether.call
-├── data/               # Room Database, CallLogRepository, ContactsRepository, AppSettingsManager
+├── data/               # Room Database, CallLogRepository, ContactsRepository, AppSettingsManager, SpamBlockEntity
 ├── telecom/            # AetherInCallService, CallManager, CallBridge, CallNotificationManager,
 │                       # ActiveCallNotificationBuilder, CallRingtonePlayer, CallRecordingManager, CallerIdResolver
 ├── ui/                 # InCallActivity, InCallScreen, CarrierVideoCallScreen, DialerMainScreen,
-│                       # OneUiContactsScreen, OneUiContactSheets, AboutSettingsScreen, OneUiSettingsScreen
+│                       # OneUiContactsScreen, OneUiContactSheets, PhotoCropperEditorDialog, AboutSettingsScreen, OneUiSettingsScreen
 │   └── theme/          # AetherTheme (Light / Dark / System Default Theme Engine)
 ├── util/               # PhoneNormalizer, SimAccountResolver, ToastUtils, GitHubUpdateChecker
 └── widget/             # FavoritesWidgetReceiver (Glance Speed-Dial Widget)

@@ -57,7 +57,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
-import com.aether.call.telecom.CallRecorderManager
+import com.aether.call.telecom.CallRecordingManager
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -76,7 +76,7 @@ fun OneUiRecordingsScreen(
     val haptic = LocalHapticFeedback.current
 
     var recordedFiles by remember {
-        mutableStateOf(CallRecorderManager.getRecordedFiles(context))
+        mutableStateOf(CallRecordingManager.getRecordedFiles(context))
     }
 
     var currentlyPlayingFile by remember { mutableStateOf<File?>(null) }
@@ -321,8 +321,8 @@ fun OneUiRecordingsScreen(
                             isPlaying = false
                             currentlyPlayingFile = null
                         }
-                        CallRecorderManager.deleteRecording(file)
-                        recordedFiles = CallRecorderManager.getRecordedFiles(context)
+                        CallRecordingManager.deleteRecording(file)
+                        recordedFiles = CallRecordingManager.getRecordedFiles(context)
                         fileToDelete = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),

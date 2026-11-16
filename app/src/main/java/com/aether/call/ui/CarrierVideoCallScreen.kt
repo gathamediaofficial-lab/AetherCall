@@ -698,22 +698,27 @@ fun CarrierVideoCallScreen(
                         IconButton(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                isScreenLocked = true
+                                isScreenLocked = !isScreenLocked
                             },
                             modifier = Modifier
                                 .size(52.dp)
                                 .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.16f)),
+                                .background(if (isScreenLocked) Color(0xFF10B981) else Color.White.copy(alpha = 0.16f)),
                         ) {
-                            Icon(Icons.Default.LockOpen, contentDescription = "Lock touch protection", tint = Color.White)
+                            Icon(
+                                imageVector = if (isScreenLocked) Icons.Default.Lock else Icons.Default.LockOpen,
+                                contentDescription = if (isScreenLocked) "Unlock Screen" else "Lock Screen",
+                                tint = if (isScreenLocked) Color.Black else Color.White,
+                            )
                         }
 
                         IconButton(
                             onClick = onEndCallClick,
+                            enabled = !isScreenLocked,
                             modifier = Modifier
                                 .size(56.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFFEF4444)),
+                                .background(if (isScreenLocked) Color(0xFFEF4444).copy(alpha = 0.4f) else Color(0xFFEF4444)),
                         ) {
                             Icon(Icons.Default.CallEnd, contentDescription = "End Call", tint = Color.White)
                         }
@@ -722,89 +727,45 @@ fun CarrierVideoCallScreen(
             }
         }
 
-        // Touch Protection / Screen Lock Full-Screen Overlay for Video Calls
-        if (isScreenLocked && callState != Call.STATE_DISCONNECTED && callState != Call.STATE_DISCONNECTING) {
+        // Transparent Touch Blocker when screen is locked (NO dark/blur overlay or text popups)
+        if (isScreenLocked && !isEndedStage) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.88f))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                     ) {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     },
-                contentAlignment = Alignment.Center,
+            )
+
+            // Floating Lock Toggle Pill at Bottom Center when controls are hidden
+            AnimatedVisibility(
+                visible = !controlsVisible,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 32.dp),
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                    modifier = Modifier.padding(24.dp),
+                Surface(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        isScreenLocked = false
+                    },
+                    shape = CircleShape,
+                    color = Color(0xFF10B981),
+                    modifier = Modifier.size(56.dp),
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color(0xFF1E2024),
-                        border = BorderStroke(1.dp, Color(0xFF10B981)),
-                        modifier = Modifier.size(84.dp),
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = "Locked",
-                                tint = Color(0xFF10B981),
-                                modifier = Modifier.size(38.dp),
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    Text(
-                        text = "Touch protection enabled",
-                        color = Color.White,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Text(
-                        text = "Video call screen is locked to prevent accidental touches",
-                        color = Color(0xFF94A3B8),
-                        fontSize = 14.sp,
-                        textAlign = TextAlign.Center,
-                    )
-
-                    Spacer(modifier = Modifier.height(32.dp))
-
-                    Surface(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            isScreenLocked = false
-                        },
-                        shape = RoundedCornerShape(28.dp),
-                        color = Color(0xFF10B981),
-                        modifier = Modifier.height(54.dp),
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                            modifier = Modifier.padding(horizontal = 28.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.LockOpen,
-                                contentDescription = null,
-                                tint = Color.Black,
-                                modifier = Modifier.size(20.dp),
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = "Unlock screen",
-                                color = Color.Black,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = "Unlock Screen",
+                            tint = Color.Black,
+                            modifier = Modifier.size(26.dp),
+                        )
                     }
                 }
             }

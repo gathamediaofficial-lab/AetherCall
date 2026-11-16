@@ -33,6 +33,8 @@ import com.aether.call.data.LabeledEntry
 import com.aether.call.data.LabeledValue
 import com.aether.call.data.PosterCustomization
 import com.aether.call.data.QuickReplyEntity
+import com.aether.call.util.showToast
+import kotlinx.coroutines.withContext
 import com.aether.call.data.SimPreferenceEntity
 import com.aether.call.data.UserAppSettings
 import com.aether.call.telecom.SimAccountInfo
@@ -519,26 +521,43 @@ class DialerViewModel : ViewModel() {
         }
     }
 
-    fun addBlockedNumber(context: Context, number: String) {
+    fun addBlockedNumber(context: Context, number: String, label: String = "Spam / Telemarketer") {
+        blockAndReportSpam(context, number, label, isSpam = true)
+    }
+
+    fun blockAndReportSpam(
+        context: Context,
+        number: String,
+        reason: String = "Spam / Telemarketer",
+        isSpam: Boolean = true,
+    ) {
         if (number.isBlank()) return
-        val normalizedNumber = number.replace("\\s+".toRegex(), "").replace("-", "")
-        updateUserSettings(context) { s -> s.copy(blockedNumbers = s.blockedNumbers + normalizedNumber) }
+        val normalizedNumber = PhoneNormalizer.normalizeDigits(number)
+        val cleanNumber = normalizedNumber.ifBlank { number.trim() }
+
+        updateUserSettings(context) { s ->
+            s.copy(blockedNumbers = (s.blockedNumbers + cleanNumber).toSet())
+        }
 
         viewModelScope.launch(Dispatchers.IO) {
             val dao = AetherDatabase.getDatabase(context).blockedNumberDao()
             dao.blockNumber(
                 BlockedNumberEntity(
-                    phoneNumber = normalizedNumber,
-                    isSpam = true,
+                    phoneNumber = cleanNumber,
+                    label = reason,
+                    isSpam = isSpam,
+                    blockedAtTimestamp = System.currentTimeMillis(),
                 ),
             )
             try {
                 val values = ContentValues().apply {
-                    put(BlockedNumberContract.BlockedNumbers.COLUMN_ORIGINAL_NUMBER, normalizedNumber)
+                    put(BlockedNumberContract.BlockedNumbers.COLUMN_ORIGINAL_NUMBER, cleanNumber)
                 }
                 context.contentResolver.insert(BlockedNumberContract.BlockedNumbers.CONTENT_URI, values)
-            } catch (_: SecurityException) {
             } catch (_: Exception) {
+            }
+            withContext(Dispatchers.Main) {
+                context.showToast("Blocked & reported $cleanNumber as $reason")
             }
         }
     }
@@ -948,10 +967,31 @@ class DialerViewModel : ViewModel() {
         }
     }
 
+    val isLoadingRecents = MutableStateFlow(true)
+
     fun loadRecentCalls(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
-            val calls = CallLogRepository.getRecentCalls(context)
-            _recentCalls.value = calls
+            val oneWeekAgo = System.currentTimeMillis() - (7L * 24 * 60 * 60 * 1000L)
+
+            // Stage 1: Fast load of past 7 days history (< 5ms)
+            val firstWeekCalls = CallLogRepository.getRecentCallsFirstWeek(context, oneWeekAgo)
+            if (firstWeekCalls.isNotEmpty()) {
+                _recentCalls.value = firstWeekCalls
+                isLoadingRecents.value = false
+            }
+
+            // Stage 2: Background load of older call history (older than 1 week)
+            val olderCalls = CallLogRepository.getOlderCallRecords(context, oneWeekAgo)
+            if (olderCalls.isNotEmpty()) {
+                _recentCalls.value = if (firstWeekCalls.isNotEmpty()) {
+                    firstWeekCalls + olderCalls
+                } else {
+                    olderCalls
+                }
+            } else if (firstWeekCalls.isEmpty()) {
+                _recentCalls.value = emptyList()
+            }
+            isLoadingRecents.value = false
         }
     }
 

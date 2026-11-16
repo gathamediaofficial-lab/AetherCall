@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -37,7 +39,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -114,6 +120,7 @@ fun OneUiKeypadScreen(
     onAddToContactClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
 
     val t9Matches = remember(enteredNumber, allContacts) {
@@ -125,7 +132,7 @@ fun OneUiKeypadScreen(
                 val cleanNum = contact.number.replace("\\s+".toRegex(), "")
                 val t9Name = nameToT9Digits(contact.name)
                 cleanNum.contains(cleanQuery) || t9Name.contains(cleanQuery)
-            }.take(4)
+            }.take(15)
         }
     }
 
@@ -157,7 +164,7 @@ fun OneUiKeypadScreen(
         verticalArrangement = Arrangement.Bottom,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // TOP PREDICTIVE T9 STRIP
+        // TOP PREDICTIVE T9 VERTICAL LIST
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -165,11 +172,10 @@ fun OneUiKeypadScreen(
             contentAlignment = Alignment.BottomCenter,
         ) {
             if (t9Matches.isNotEmpty()) {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
+                LazyColumn(
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxSize(),
                 ) {
                     items(t9Matches, key = { if (it.id != 0L) it.id else it.number }) { contact ->
                         val colorIdx = (contact.id.hashCode() and 0x7FFFFFFF) % avatarColors.size
@@ -178,52 +184,84 @@ fun OneUiKeypadScreen(
                         Surface(
                             shape = RoundedCornerShape(20.dp),
                             color = Color(0xFF1E2024),
-                            modifier = Modifier.clickable {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onCallClick(contact.number)
-                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onCallClick(contact.number)
+                                },
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Box(
-                                    contentAlignment = Alignment.Center,
-                                    modifier = Modifier
-                                        .size(26.dp)
-                                        .background(avatarColors[colorIdx], CircleShape)
-                                        .clip(CircleShape),
-                                ) {
-                                    Text(
-                                        text = initial.toString(),
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White,
-                                            fontSize = 12.sp,
-                                        ),
+                                if (!contact.photoUri.isNullOrBlank()) {
+                                    AsyncImage(
+                                        model = ImageRequest.Builder(context)
+                                            .data(contact.photoUri)
+                                            .crossfade(true)
+                                            .build(),
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .clip(CircleShape),
                                     )
+                                } else {
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .background(avatarColors[colorIdx], CircleShape)
+                                            .clip(CircleShape),
+                                    ) {
+                                        Text(
+                                            text = initial.toString(),
+                                            style = TextStyle(
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White,
+                                                fontSize = 16.sp,
+                                            ),
+                                        )
+                                    }
                                 }
 
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
 
-                                Column {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = contact.name,
                                         style = TextStyle(
-                                            fontSize = 14.sp,
+                                            fontSize = 15.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = Color.White,
                                         ),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
+                                    Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = contact.number,
+                                        text = "${contact.number} • ${contact.phones.firstOrNull()?.label?.ifBlank { "Mobile" } ?: "Mobile"}",
                                         style = TextStyle(
-                                            fontSize = 12.sp,
+                                            fontSize = 13.sp,
                                             color = Color(0xFF8E8E93),
                                         ),
                                         maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+
+                                IconButton(onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onCallClick(contact.number)
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Call,
+                                        contentDescription = "Call",
+                                        tint = Color(0xFF10B981),
+                                        modifier = Modifier.size(20.dp),
                                     )
                                 }
                             }

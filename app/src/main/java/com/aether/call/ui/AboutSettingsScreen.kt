@@ -66,9 +66,9 @@ fun AboutSettingsScreen(
     val context = LocalContext.current
     val resolvedVersion = remember(context, appVersionName) {
         appVersionName?.takeIf { it.isNotBlank() } ?: try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.1.1"
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.1.4"
         } catch (_: Exception) {
-            "1.1.1"
+            "1.1.4"
         }
     }
     val coroutineScope = rememberCoroutineScope()

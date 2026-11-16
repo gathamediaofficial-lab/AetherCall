@@ -2,11 +2,13 @@ package com.aether.call.data
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.provider.BlockedNumberContract
 import android.provider.CallLog
 import android.telecom.PhoneAccount
 import android.telecom.PhoneAccountHandle
@@ -14,7 +16,13 @@ import android.telecom.TelecomManager
 import android.telecom.VideoProfile
 import androidx.core.content.ContextCompat
 import com.aether.call.telecom.CallManager
+import com.aether.call.util.PhoneNormalizer
 import com.aether.call.util.showToast
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.Locale
 
 /**
  * Data model for a call history record.
@@ -49,10 +57,11 @@ data class CallLogItem(
  */
 object CallLogRepository {
 
-    /**
-     * Retrieves up to 50 recent call records from system CallLog provider.
-     */
-    fun getRecentCalls(context: Context): List<CallRecord> {
+    private fun queryCallRecords(
+        context: Context,
+        selection: String? = null,
+        selectionArgs: Array<String>? = null,
+    ): List<CallRecord> {
         if (ContextCompat.checkSelfPermission(
                 context,
                 Manifest.permission.READ_CALL_LOG,
@@ -67,8 +76,8 @@ object CallLogRepository {
             context.contentResolver.query(
                 CallLog.Calls.CONTENT_URI,
                 null,
-                null,
-                null,
+                selection,
+                selectionArgs,
                 "${CallLog.Calls.DATE} DESC",
             )?.use { cursor ->
                 val idIndex = cursor.getColumnIndex(CallLog.Calls._ID)
@@ -85,7 +94,7 @@ object CallLogRepository {
                     ?: cursor.getColumnIndex("sim_slot").takeIf { it != -1 }
 
                 var count = 0
-                while (cursor.moveToNext() && (count < 50)) {
+                while (cursor.moveToNext()) {
                     val id = if (idIndex != -1) cursor.getLong(idIndex) else count.toLong()
                     val number = if (numberIndex != -1) cursor.getString(numberIndex) ?: "Unknown" else "Unknown"
                     val name = if (nameIndex != -1) cursor.getString(nameIndex) else null
@@ -127,6 +136,75 @@ object CallLogRepository {
         }
 
         return callList
+    }
+
+    /**
+     * Retrieves recent call records from past 7 days (1 week) for instant stage-1 UI loading.
+     */
+    fun getRecentCallsFirstWeek(context: Context, sinceMillis: Long): List<CallRecord> {
+        return queryCallRecords(
+            context = context,
+            selection = "${CallLog.Calls.DATE} >= ?",
+            selectionArgs = arrayOf(sinceMillis.toString()),
+        )
+    }
+
+    /**
+     * Retrieves older call records before `olderThanMillis` for background stage-2 loading.
+     */
+    fun getOlderCallRecords(context: Context, olderThanMillis: Long): List<CallRecord> {
+        return queryCallRecords(
+            context = context,
+            selection = "${CallLog.Calls.DATE} < ?",
+            selectionArgs = arrayOf(olderThanMillis.toString()),
+        )
+    }
+
+    /**
+     * Retrieves full call history records from system CallLog provider ordered latest to oldest.
+     */
+    fun getRecentCalls(context: Context): List<CallRecord> {
+        return queryCallRecords(context)
+    }
+
+    /**
+     * Blocks a phone number, registers it as spam in local Room DB + System BlockedNumberContract,
+     * and updates active settings.
+     */
+    fun blockAndReportSpam(
+        context: Context,
+        number: String,
+        reason: String = "Spam / Telemarketer",
+        isSpam: Boolean = true,
+    ) {
+        if (number.isBlank()) return
+        val cleanNumber = PhoneNormalizer.normalizeDigits(number).ifBlank { number.trim() }
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val dao = AetherDatabase.getDatabase(context).blockedNumberDao()
+            dao.blockNumber(
+                BlockedNumberEntity(
+                    phoneNumber = cleanNumber,
+                    label = reason,
+                    isSpam = isSpam,
+                    blockedAtTimestamp = System.currentTimeMillis(),
+                ),
+            )
+            val settingsManager = AppSettingsManager(context)
+            settingsManager.updateSettings { s ->
+                s.copy(blockedNumbers = (s.blockedNumbers + cleanNumber).toSet())
+            }
+            try {
+                val values = ContentValues().apply {
+                    put(BlockedNumberContract.BlockedNumbers.COLUMN_ORIGINAL_NUMBER, cleanNumber)
+                }
+                context.contentResolver.insert(BlockedNumberContract.BlockedNumbers.CONTENT_URI, values)
+            } catch (_: Exception) {
+            }
+            withContext(Dispatchers.Main) {
+                context.showToast("Blocked & reported $cleanNumber as $reason")
+            }
+        }
     }
 
     /**
@@ -191,17 +269,26 @@ object CallLogRepository {
         CallManager.prepareOutgoingVideoCall()
         com.aether.call.telecom.CallBridge.callerNumber.value = cleanNumber
 
-        // 2. Resolve a guaranteed non-null PhoneAccountHandle (even when Dual-SIM is set to "Ask every time")
+        // 2. Resolve a cellular Telephony PhoneAccountHandle (preventing third-party apps like Google Meet from hijacking native video calls)
         val accountToUse: PhoneAccountHandle? = preferredAccountHandle ?: run {
             try {
                 val capableAccounts = telecomManager?.callCapablePhoneAccounts.orEmpty()
-                val videoCapable = capableAccounts.firstOrNull { handle ->
-                    val account = telecomManager?.getPhoneAccount(handle)
-                    account?.hasCapabilities(PhoneAccount.CAPABILITY_VIDEO_CALLING) == true
+                val cellularAccounts = capableAccounts.filter { handle ->
+                    val pkg = handle.componentName.packageName.lowercase(Locale.ROOT)
+                    !pkg.contains("tachyon") &&
+                        !pkg.contains("meet") &&
+                        !pkg.contains("whatsapp") &&
+                        !pkg.contains("telegram") &&
+                        !pkg.contains("duo")
                 }
-                videoCapable
-                    ?: telecomManager?.getDefaultOutgoingPhoneAccount("tel")
-                    ?: capableAccounts.firstOrNull()
+                val defaultAccount = telecomManager?.getDefaultOutgoingPhoneAccount("tel")
+                val isDefaultCellular = defaultAccount != null && cellularAccounts.any { it == defaultAccount }
+
+                if (isDefaultCellular) {
+                    defaultAccount
+                } else {
+                    cellularAccounts.firstOrNull() ?: capableAccounts.firstOrNull()
+                }
             } catch (_: Exception) {
                 null
             }
