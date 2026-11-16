@@ -1099,6 +1099,35 @@ fun InCallScreen(
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     },
             )
+
+            // Elevated Top-Right Unlock Button (rendered ABOVE the touch blocker so tapping it ALWAYS unlocks!)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        isScreenLocked = false
+                    },
+                    shape = CircleShape,
+                    color = Color(0xFF10B981),
+                    modifier = Modifier.size(44.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = "Unlock screen",
+                            tint = Color.Black,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                }
+            }
         }
     }
 

@@ -112,13 +112,19 @@ object CallRecordingManager {
         val recordingsDir = getRecordingsDir(context)
         val outputFile = File(recordingsDir, displayFileName)
 
-        // Try AudioSources in order of Android OEM in-call compatibility
+        // Prioritize Hardware MIC & VOICE_RECOGNITION for in-call acoustic capture
         val audioSources = listOf(
-            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
             MediaRecorder.AudioSource.MIC,
             MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
             MediaRecorder.AudioSource.DEFAULT,
         )
+
+        // Ensure speakerphone is active so both local & remote voices are captured in full HD
+        try {
+            CallManager.setSpeakerphone(true)
+        } catch (_: Exception) {
+        }
 
         for (source in audioSources) {
             try {

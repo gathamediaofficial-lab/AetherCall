@@ -1077,25 +1077,14 @@ class AetherInCallService : InCallService() {
         val canSendText = call.details?.can(Call.Details.CAPABILITY_RESPOND_VIA_TEXT) == true
         CallManager.canRespondViaText.value = canSendText
 
-        when (state) {
-            Call.STATE_SELECT_PHONE_ACCOUNT -> {
-                wasIncomingRinging = false
-                wasAnswered = true
-                handleSelectPhoneAccount(call)
-                val ongoingNotif = CallNotificationManager.buildOngoingCallNotification(this, call, initialResolved)
-                promoteToForeground(CallNotificationManager.ONGOING_NOTIFICATION_ID, ongoingNotif)
-                launchFullScreenInCall(call, number)
-                updateAndResolveCaller(call)
-            }
-            Call.STATE_DIALING, Call.STATE_CONNECTING -> {
-                wasIncomingRinging = false
-                wasAnswered = true
-                val ongoingNotif = CallNotificationManager.buildOngoingCallNotification(this, call, initialResolved)
-                promoteToForeground(CallNotificationManager.ONGOING_NOTIFICATION_ID, ongoingNotif)
-                launchFullScreenInCall(call, number)
-                updateAndResolveCaller(call)
-            }
-            Call.STATE_RINGING -> {
+        val isIncomingCall = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            call.details?.callDirection == Call.Details.DIRECTION_INCOMING
+        } else {
+            state == Call.STATE_RINGING
+        }
+
+        when {
+            state == Call.STATE_RINGING && isIncomingCall -> {
                 wasIncomingRinging = true
                 wasAnswered = false
                 handleIncomingRinging(call, number, initialResolved)
@@ -1135,6 +1124,8 @@ class AetherInCallService : InCallService() {
                 }
             }
             else -> {
+                wasIncomingRinging = false
+                wasAnswered = true
                 val ongoingNotif = CallNotificationManager.buildOngoingCallNotification(this, call, initialResolved)
                 promoteToForeground(CallNotificationManager.ONGOING_NOTIFICATION_ID, ongoingNotif)
                 launchFullScreenInCall(call, number)
